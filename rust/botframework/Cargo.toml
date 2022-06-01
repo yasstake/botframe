@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0"
 pyo3 = { version = "0.16.3", features = ["extension-module"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 tungstenite = "0.17.0"
 tokio-tungstenite = { version = "0.17.1", features = ["native-tls", "stream"] }
