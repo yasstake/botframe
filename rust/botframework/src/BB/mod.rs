@@ -1,6 +1,6 @@
 
 
-
+pub mod message;
 
 /* 
 sample data
@@ -26,18 +26,7 @@ https://bybit-exchange.github.io/docs/inverse/?console#t-websockettrade
 
 
 
-struct TradId {
-    id: u128
-}
-
-impl TradeId {
-    fn from_str() {
-
-    }
-
-}
-
-
-struct Trade {
-
-}
+#[test]
+fn testcase() {
+    println!("debug");
+}   

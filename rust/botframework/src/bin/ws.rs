@@ -200,6 +200,60 @@ async fn main() {
 }
 
 
+
+
+use serde_json::json;
+
+const TRADE_RECORD: &str =
+r#"
+{"topic":"ParseTradeMessage.BTCUSD",
+ "data":[
+       {"trade_time_ms":1619398389868,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":2000,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"8241a632-9f07-5fa0-a63d-06cefd570d75","cross_seq":6169452432},
+       {"trade_time_ms":1619398389947,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":200,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"ff87be41-8014-5a33-b4b1-3252a6422a41","cross_seq":6169452432}]}
+"#;
+
+use serde_derive::Serialize;
+use serde_derive::Deserialize;
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "topic")]
+enum BbMessage {
+    #[serde(rename="ParseTradeMessage.BTCUSD")]
+    TradeMessage {
+        trade_time_ms: u64,
+        timestamp: String,
+        symbol: String,
+        side: String,
+        size: u32,
+        price: f32,
+        tickdirection: String,
+        trade_id: String,
+        cross_seq: u64,
+    }    
+}
+
+/* 
+#[test]
+fn test_parse_trade_record() {
+//    let m: BbMessage = serde_json::from_str(TRADE_RECORD)?;
+    let m = serde_json::from_str(TRADE_RECORD);
+}
+
+*/
+
+struct TradeMessage {
+
+}
+
+struct TradeRecord {
+    time: u64,      // time in ms
+    price: f32,
+    size:  u32,
+    id:    u128
+}
+
+
+
 /*
 #[tokio::main]
 async fn main() {

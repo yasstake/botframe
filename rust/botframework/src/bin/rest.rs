@@ -1,5 +1,5 @@
 
-
+/* 
 use reqwest::{blocking::Response, header};
 use crate::error::{Error, Result};
 // use std::collections::BTreeMap;
@@ -20,6 +20,9 @@ fn http_get(url: &str) -> Result<Response> {
     let response = client.get(full_url.as_str()).send()?;
     Ok(response)
 }
+
+*/
+
 
 /*
 // Returns the raw response directly.
@@ -78,3 +81,7 @@ macro_rules! gen_api {
     }
 }
 */
+
+fn main() {
+    
+}
