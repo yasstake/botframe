@@ -105,14 +105,14 @@ fn test_to_data_frame() {
 }
 
 
-struct Market {
+pub struct Market {
     // Use DataFrame
     trade_history: DataFrame,
     trade_buffer: TradeBlock
 }
 
 impl Market {
-    fn new() -> Market {
+    pub fn new() -> Market {
         let mut trade_block = TradeBlock::new();
         return Market {
             trade_history: trade_block.to_data_frame(),
@@ -120,11 +120,11 @@ impl Market {
         }
     }
 
-    fn add_trade(&mut self, trade: Trade) {
+    pub fn add_trade(&mut self, trade: Trade) {
         self.trade_buffer.add_trade(trade);
     }
 
-    fn flush_add_trade(&mut self) {
+    pub fn flush_add_trade(&mut self) {
         // append history
         //self.trade_history.        
         match self.trade_history.vstack(&self.trade_buffer.to_data_frame()){

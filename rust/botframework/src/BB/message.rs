@@ -74,7 +74,7 @@ fn is_valid_log_header(rec: &str) -> bool {
 }
 
 
-fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
+pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
     const NUM_OF_REC: i32 = 10;
     let row = rec.split(",");
 
