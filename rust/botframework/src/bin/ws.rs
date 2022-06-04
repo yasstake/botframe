@@ -1,23 +1,20 @@
-
 // Based on https://raw.githubusercontent.com/haxpor/bybit-shiprekt/master/src/main.rs
-
 
 use anyhow::Result;
 
-use tungstenite::Message;
 use tungstenite::error::Error as TungsError;
+use tungstenite::Message;
 
 use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
-use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::MaybeTlsStream;
+use tokio_tungstenite::WebSocketStream;
 use url::Url;
 
-use futures_util::stream::StreamExt;
 use futures_util::sink::SinkExt;
+use futures_util::stream::StreamExt;
 
 use std::time::Duration;
-
 
 #[macro_export]
 macro_rules! ret_err {
@@ -34,18 +31,15 @@ macro_rules! ret_err {
 const BB_WS_ENDPOINT: &str = "wss://stream.bybit.com/realtime";
 const BB_SUBSCRIBE_EXEC: &str = r#"{"op":"subscribe","args": ["trade.BTCUSD"]}"#;
 
-
 #[tokio::main]
 #[test]
 async fn test_connect_async_to_wss() -> Result<()> {
     let connection = connect_to_wss(BB_WS_ENDPOINT).await?;
 
-
     println!("connected ");
 
     Ok(())
 }
-
 
 async fn connect_to_wss(wss_url: &str) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
     let url = Url::parse(wss_url)?;
@@ -55,7 +49,6 @@ async fn connect_to_wss(wss_url: &str) -> Result<WebSocketStream<MaybeTlsStream<
     Ok(stream)
 }
 
-
 #[tokio::main]
 #[test]
 async fn test_ws_loop() -> Result<()> {
@@ -63,7 +56,6 @@ async fn test_ws_loop() -> Result<()> {
 
     Ok(())
 }
-
 
 async fn ws_loop(url_str: &str) -> Result<()> {
     // Connect
@@ -76,7 +68,10 @@ async fn ws_loop(url_str: &str) -> Result<()> {
 
     // Send Opcode
 
-    match ws_sender.send(Message::Text(BB_SUBSCRIBE_EXEC.into())).await {
+    match ws_sender
+        .send(Message::Text(BB_SUBSCRIBE_EXEC.into()))
+        .await
+    {
         Ok(_) => println!("subscribed to liquidation topic"),
         Err(e) => println!("Error"),
     }
@@ -100,7 +95,7 @@ async fn ws_loop(url_str: &str) -> Result<()> {
                             Ok(Message::Close(optional_cf)) => match optional_cf {
                                _ => {
                                    println!("(websocket closed)");
-                                   break 'receive;                                   
+                                   break 'receive;
                                }
                             },
 
@@ -114,15 +109,15 @@ async fn ws_loop(url_str: &str) -> Result<()> {
                             },
                             Err(TungsError::AlreadyClosed) => {
                                 eprintln!("Error: already closed");
-                                break 'receive;                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::Io(e)) => {
                                 eprintln!("Error: IO; err={}", e);
-                                break 'receive;                                                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::Tls(e)) => {
                                 eprintln!("Error:: Tls error; err={}", e);
-                                break 'receive;                                                                                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::Capacity(e)) => {
                                 type CError = tungstenite::error::CapacityError;
@@ -130,11 +125,11 @@ async fn ws_loop(url_str: &str) -> Result<()> {
                                     CError::TooManyHeaders => eprintln!("Error: CapacityError, too many headers"),
                                     CError::MessageTooLong{ size, max_size } => eprintln!("Error: CapacityError, message too long with size={}, max_size={}", size, max_size),
                                 }
-                                break 'receive;                                                                                                                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::Protocol(e)) => {
                                 eprintln!("Error: Protocol, err={}", e);
-                                break 'receive;                                                                                                                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::SendQueueFull(e)) => {
                                 type PMsg = tungstenite::protocol::Message;
@@ -151,7 +146,7 @@ async fn ws_loop(url_str: &str) -> Result<()> {
                                     },
                                     PMsg::Frame(frame) => eprintln!("Error: SendQueueFull for Frame messasge, content={:?}", frame)
                                 }
-                                break 'receive;                                                                                                                                                                                                   
+                                break 'receive;
                             },
                             Err(TungsError::Utf8) => {
                                 eprintln!("Error: Utf8 coding error");
@@ -159,15 +154,15 @@ async fn ws_loop(url_str: &str) -> Result<()> {
                             },
                             Err(TungsError::Url(e)) => {
                                 eprintln!("Error: Invalid Url; err={:?}", e);
-                                continue 'receive;                                
+                                continue 'receive;
                             },
                             Err(TungsError::Http(e)) => {
                                 eprintln!("Error: Http error; err={:?}", e);
-                                continue 'receive;                                
+                                continue 'receive;
                             },
                             Err(TungsError::HttpFormat(e)) => {
                                 eprintln!("Error: Http format error; err{:?}", e);
-                                continue 'receive;                                
+                                continue 'receive;
                             },
                         }
                     },
@@ -185,13 +180,9 @@ async fn ws_loop(url_str: &str) -> Result<()> {
             }
         }
     }
-    
-    
+
     Ok(())
 }
-
-
-
 
 #[tokio::main]
 async fn main() {
@@ -199,26 +190,22 @@ async fn main() {
     ws_loop(BB_WS_ENDPOINT).await;
 }
 
-
-
-
 use serde_json::json;
 
-const TRADE_RECORD: &str =
-r#"
+const TRADE_RECORD: &str = r#"
 {"topic":"ParseTradeMessage.BTCUSD",
  "data":[
        {"trade_time_ms":1619398389868,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":2000,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"8241a632-9f07-5fa0-a63d-06cefd570d75","cross_seq":6169452432},
        {"trade_time_ms":1619398389947,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":200,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"ff87be41-8014-5a33-b4b1-3252a6422a41","cross_seq":6169452432}]}
 "#;
 
-use serde_derive::Serialize;
 use serde_derive::Deserialize;
+use serde_derive::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "topic")]
 enum BbMessage {
-    #[serde(rename="ParseTradeMessage.BTCUSD")]
+    #[serde(rename = "ParseTradeMessage.BTCUSD")]
     TradeMessage {
         trade_time_ms: u64,
         timestamp: String,
@@ -229,10 +216,10 @@ enum BbMessage {
         tickdirection: String,
         trade_id: String,
         cross_seq: u64,
-    }    
+    },
 }
 
-/* 
+/*
 #[test]
 fn test_parse_trade_record() {
 //    let m: BbMessage = serde_json::from_str(TRADE_RECORD)?;
@@ -241,18 +228,14 @@ fn test_parse_trade_record() {
 
 */
 
-struct TradeMessage {
-
-}
+struct TradeMessage {}
 
 struct TradeRecord {
-    time: u64,      // time in ms
+    time: u64, // time in ms
     price: f32,
-    size:  u32,
-    id:    u128
+    size: u32,
+    id: u128,
 }
-
-
 
 /*
 #[tokio::main]

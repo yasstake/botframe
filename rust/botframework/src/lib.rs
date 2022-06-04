@@ -1,12 +1,8 @@
-
-
 use pyo3::prelude::*;
-
 
 #[macro_use]
 extern crate anyhow;
 extern crate directories;
-
 
 pub mod bb;
 pub mod exchange;
