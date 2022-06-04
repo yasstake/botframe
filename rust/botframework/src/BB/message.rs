@@ -19,6 +19,8 @@ timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotiona
 
 https://api.bybit.com/v2/public/trading-records?symbol=BTCUSD
 
+KLine形式で１分足ならばもっと長期間のログが取得可能。
+
 
 ・WS（リアルタイム：過去は取得付加）
 
@@ -35,17 +37,131 @@ https://api.bybit.com/v2/public/trading-records?symbol=BTCUSD
 
 
 
+use anyhow::Context;
 use thiserror::Error;
+
+
 #[derive(Error, Debug)]
 #[error("{msg:}")]
 struct ParseError{
     msg: String
 }
 
-#[test]
-fn est() {
-    println!("Hello");
+use crate::exchange::Trade;
+use crate::exchange::{BUY, SELL};
+
+
+//------------------------------------------------------------------------
+// Parse log file
+// example:
+// 
+// timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional
+//1651449601,BTCUSD,Sell,258,38458.00,MinusTick,a0dd4504-db3c-535f-b43b-4de38f581b79,670861.7192781736,258,0.006708617192781736
+
+
+fn is_valid_log_header(rec: &str) -> bool {
+    let header = ["timestamp", "symbol", "side", "size", "price", "tickDirection",
+                            "trdMatchID","grossValue","homeNotional","foreignNotional"];
+
+    let row = rec.split(",");
+    for (i, col) in row.enumerate() {
+        if header[i] != col {
+            return false;
+        } 
+    }
+
+    return true;
 }
+
+
+fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
+    const NUM_OF_REC: i32 = 10;
+    let row = rec.split(",");
+
+    let mut time_ns: i64 = 0;
+    let mut price: f32 = 0.0;
+    let mut size:  f32 = 0.0;
+    let mut bs:  i32 = 0;
+    let mut id: String = "".to_string();
+
+    for (i, col) in row.enumerate() {
+        match i {
+            0 =>{ /*timestamp*/
+                time_ns = col.parse::<i64>()?;
+            },
+            1 =>{ /* symbol IGNORE */},
+            2 =>{ /* side */
+                match col {
+                    "Buy" => {bs = BUY},
+                    "Sell" => {bs = SELL}
+                    _ => { return Err(anyhow!("log record error {} {}", col, rec)) }
+                }
+            }, 
+            3 =>{/* size */
+                size = col.parse::<f32>()?;
+            }, 
+            4 =>{/* price */
+                price = col.parse::<f32>()?;
+            },
+            5 =>{/* tickDirection IGNORE */}, 
+            6 =>{/* trdMatchID */
+                id = col.to_string();
+            },
+            7 =>{/* grossValue IGNORE */}, 8 =>{/* homeNotional IGNORE */}, 9 =>{/* foreignNotional IGNORE */},
+            _ =>{/* ERROR */
+                return Err(anyhow!("log record error {} {}", col, rec))
+            },                                                                                                                        
+        }        
+    }
+    
+    return Ok(Trade{
+        time_ns: time_ns,
+        price: price,
+        size:  size,
+        bs:  bs,
+        id: id,
+    });
+}
+
+
+#[test]
+fn test_is_valid_hedader() {
+    const HEADER1: &str = "timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
+    assert!(is_valid_log_header(HEADER1));
+
+    const HEADER2: &str = "stamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
+    assert!(is_valid_log_header(HEADER2) == false);
+}
+
+
+#[test]
+fn test_from_csv_rec() {
+    const TRADE_LINE: &str = "1651449616,BTCUSD,Buy,1,38463.50,ZeroMinusTick,cb731e0e-55e6-551f-81c8-286b9e20e361,2599.867406762255,1,2.599867406762255e-05";
+
+    let rec = parse_log_rec(TRADE_LINE).unwrap();
+
+    println!("{:?}", &rec);
+}
+
+
+//------------------------------------------------------------------------
+// WebSocket JSON format
+// Transaction
+// Sample
+// 
+// {"topic":"ParseTradeMessage.BTCUSD",
+// "data":[
+//       {"trade_time_ms":1619398389868,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":2000,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"8241a632-9f07-5fa0-a63d-06cefd570d75","cross_seq":6169452432},
+//       {"trade_time_ms":1619398389947,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":200,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"ff87be41-8014-5a33-b4b1-3252a6422a41","cross_seq":6169452432}]}
+//　]
+//}
+
+
+
+
+
+
+
 
 //------------------------------------------------------------------------
 // GUID 

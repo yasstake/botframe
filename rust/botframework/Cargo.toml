@@ -31,4 +31,9 @@ polars-lazy = "0.20"
 flate2= "*"
 thiserror = "*"
 
+time = "0.1"
+
+directories = "4.0"
+
+curl = "*"
 
