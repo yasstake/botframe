@@ -18,12 +18,17 @@ use thiserror::Error;
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
 
+
+fn log_file_dir() -> Option<ProjectDirs> {
+    ProjectDirs::from("net", "takibi", "rusty-exchange")
+}
+
 // Create or return log directory path
 // default "~/BBLOG/" will be used.
 // TODO: if environment variable "BB_LOG_DIR" set, that will be used.
 
 fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
-    if let Some(base_path) = ProjectDirs::from("net", "takibi", "rusty-exchange") {
+    if let  Some(base_path) = log_file_dir() {
         let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
         let full_path = data_dir.join(bb_log_file_name(yyyy, mm, dd));
         fs::create_dir_all(data_dir);
@@ -95,6 +100,40 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
     }
 }
 
+
+
+/* 
+fn list_log_cache_files() -> vec![str] {
+
+
+
+}
+*/
+
+
+
+#[test]
+fn test_list_cache_files() {
+    if let  Some(base_path) = log_file_dir() {
+        let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
+        let paths = fs::read_dir(data_dir).unwrap();
+
+        for path in paths {
+            // println!("directory -> {}", path.unwrap().path().display());
+            let path = path.unwrap();
+            let name = path.path();
+            let extension = name.extension().unwrap();
+
+            println!("{}", extension.to_str().unwrap());
+            if extension == "gz" {
+                fs::remove_file(name.as_path()).unwrap();
+            }
+        }
+    }
+}
+
+
+
 use reqwest::Client;
 use std::io::Cursor;
 
@@ -133,6 +172,10 @@ use crate::bb::message;
 use crate::exchange::Market;
 use crate::exchange::Trade;
 
+// 
+//
+//
+//
 pub async fn load_log_file(
     yyyy: i32,
     mm: i32,
