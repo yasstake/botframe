@@ -23,7 +23,7 @@ struct TradeBlock {
 }
 
 impl TradeBlock {
-    fn new() -> TradeBlock {
+    const fn new() -> TradeBlock {
         return TradeBlock {
             time_ns: Vec::new(),
             price: Vec::new(),

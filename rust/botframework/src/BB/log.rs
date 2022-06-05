@@ -1,19 +1,11 @@
-use std::env;
+
 use std::fs;
 
 use flate2::bufread::GzDecoder;
-use futures_util::io::BufWriter;
+
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::Path;
-
-use std::io;
-
 use directories::ProjectDirs;
-
-use anyhow::Context;
-use std::io::copy;
-use thiserror::Error;
 
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
@@ -102,16 +94,6 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
 
 
 
-/* 
-fn list_log_cache_files() -> vec![str] {
-
-
-
-}
-*/
-
-
-
 #[test]
 fn test_list_cache_files() {
     if let  Some(base_path) = log_file_dir() {
@@ -151,7 +133,6 @@ async fn fetch_url(url: String, file_name: String) -> BbResult<()> {
     }
 }
 
-use curl::easy::Easy;
 use std::io::{stdout, Write};
 
 #[tokio::main]
@@ -207,31 +188,3 @@ pub async fn load_log_file(
     }
 }
 
-/*
-#[tokio::main]
-#[test]
-async fn load_file() {
-    fn nothing_callback(t:Trade){println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)}
-
-    load_log_file(2022, 6, 4, nothing_callback).await;
-}
-
-*/
-
-/*
-    // --snip--
-    let filename = "./TESTDATA/BTCUSD2022-05-02.csv.gz";
-
-    let path = Path::new(filename);
-
-    let f = File::open(path).unwrap();
-    let mut buf_read = std::io::BufReader::new(f);
-    let mut gzip_reader = std::io::BufReader::new(GzDecoder::new(buf_read)).lines();
-
-    for l in gzip_reader {
-        let ln = l.unwrap();
-
-        println!("{}", ln)
-    }
-}
-*/
