@@ -57,13 +57,16 @@ class Agent:
     on_order(status, side, price, volume, id)
 */
 
+use crate::bb::market::Bb;
+use chrono::{Datelike, Utc, Duration, DateTime};
 
 
 
 #[pyclass(module = "rbot")]
 struct DummyBb {
-    balance: f32
-
+    market: Bb,
+    balance: f32,
+    now: DateTime<Utc>
 }
 
 #[pymethods]
@@ -71,12 +74,22 @@ impl DummyBb {
     #[new]
     fn new() -> Self {
         println!("DummyBb is created{}", "");
-        return DummyBb{balance: 0.0};
+        return DummyBb{
+            market: Bb::new(),
+            balance: 0.0,
+            now: DateTime::now()
+        };
+    }
+
+    fn now(&self) -> PyResult<String> {
+        return Ok(self.now.to_str());
     }
 
     fn load_data(&self, ndays: usize) {
         //TODO:
         println!("Loading log file for past ndays");
+
+        self.market.download_exec_log_ndays(ndays as i32);
     }
 
     fn make_order(&self, side: &str, price: f32, volume: f32, duration: i32) -> PyResult<String> {

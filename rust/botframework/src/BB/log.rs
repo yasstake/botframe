@@ -1,15 +1,13 @@
-
 use std::fs;
 
 use flate2::bufread::GzDecoder;
 
+use directories::ProjectDirs;
 use std::fs::File;
 use std::io::prelude::*;
-use directories::ProjectDirs;
 
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
-
 
 fn log_file_dir() -> Option<ProjectDirs> {
     ProjectDirs::from("net", "takibi", "rusty-exchange")
@@ -20,10 +18,11 @@ fn log_file_dir() -> Option<ProjectDirs> {
 // TODO: if environment variable "BB_LOG_DIR" set, that will be used.
 
 fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
-    if let  Some(base_path) = log_file_dir() {
+    if let Some(base_path) = log_file_dir() {
         let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
         let full_path = data_dir.join(bb_log_file_name(yyyy, mm, dd));
-        fs::create_dir_all(data_dir);
+
+        fs::create_dir_all(data_dir).unwrap(); // TODO: need error handling?
 
         match full_path.to_str() {
             None => {
@@ -72,7 +71,7 @@ async fn download_exec_logfile(yyyy: i32, mm: i32, dd: i32) -> BbResult<()> {
 
     let url = log_download_url(yyyy, mm, dd);
 
-    fetch_url(url, dest_file).await;
+    fetch_url(url, dest_file).await.unwrap(); // TODO: error handling
 
     return Ok(());
 }
@@ -92,11 +91,9 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
     }
 }
 
-
-
 #[test]
 fn test_list_cache_files() {
-    if let  Some(base_path) = log_file_dir() {
+    if let Some(base_path) = log_file_dir() {
         let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
         let paths = fs::read_dir(data_dir).unwrap();
 
@@ -113,8 +110,6 @@ fn test_list_cache_files() {
         }
     }
 }
-
-
 
 use reqwest::Client;
 use std::io::Cursor;
@@ -153,9 +148,9 @@ use crate::bb::message;
 use crate::exchange::Market;
 use crate::exchange::Trade;
 
-// 
 //
-//
+// yyyy mm dd で指定されたログファイルをダウンロードする。
+// その後コールバック関数を用いて、Maketクラスへデータをロードする。
 //
 pub async fn load_log_file(
     yyyy: i32,
@@ -188,3 +183,26 @@ pub async fn load_log_file(
     }
 }
 
+use chrono::{Datelike, Utc, Duration};
+
+
+
+#[test]
+fn test_ndays(){
+    let last_day = Utc::now() - Duration::days(1);
+   
+    println!("{} {}-{}-{}", last_day, 
+        last_day.year(), last_day.month(), last_day.day());
+
+
+    let days = 10;
+
+    for i in (0..days).rev(){
+        let log_date = last_day - Duration::days(i);
+        let year = log_date.year();
+        let month = log_date.month() as i32;
+        let day = log_date.day() as i32;
+
+        println!("{} {} {}", year, month, day);
+    }
+}

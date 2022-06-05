@@ -4,8 +4,6 @@ import rbot
 
 bb = rbot.DummyBb()
 
-
-
 bb.load_data(10)
 
 bb.make_order("BUY", 10000.0, 10.0, 100)

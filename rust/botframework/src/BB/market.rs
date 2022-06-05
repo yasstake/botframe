@@ -3,6 +3,8 @@ use crate::exchange::Trade;
 
 use crate::bb::log::load_log_file;
 
+use chrono::{Datelike, Utc, Duration};
+
 
 
 pub struct Bb {
@@ -30,11 +32,39 @@ impl Bb {
             }
         )
     }
+
+    // 過去N日分のログをダウンロードし、Maketクラスへロードする。
+    pub fn download_exec_log_ndays(&mut self, ndays: i32) {
+        let last_day = Utc::now() - Duration::days(1);
+
+        for i in (0..ndays).rev(){
+            let log_date = last_day - Duration::days(i as i64);
+            let year = log_date.year();
+            let month = log_date.month() as i32;
+            let day = log_date.day() as i32;
+
+            self.download_exec_log(year, month, day);
+            println!("load complete {}/{}/{}", year, month, day);
+        }
+    }
+}
+
+
+
+#[tokio::main]
+#[test]
+async fn test_download_log_for_five_days() {
+    // make instance of market
+
+    let bb = Bb::new();
+
+    bb.download_exec_log_ndays(5);
 }
 
 
 #[tokio::main]
-async fn download_log() {
+#[test]
+async fn test_download_log() {
     // make instance of market
     let mut market = Market::new();
 
