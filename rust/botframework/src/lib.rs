@@ -2,6 +2,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyDateTime;
 use pyo3::types::PyInt;
 
+//use crate::polars::PyDataFrame;
+use ::polars::prelude::DataFrame;
+use tungstenite::protocol::frame::coding::Data;
+
+
 #[macro_use]
 extern crate anyhow;
 extern crate directories;
@@ -70,6 +75,22 @@ struct DummyBb {
     now: DateTime<Utc>
 }
 
+//use polars::prelude::DataFrame;
+
+#[pyclass]
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct PyDataFrame {
+    pub df: DataFrame,
+}
+
+impl PyDataFrame {
+    pub(crate) fn new(df: DataFrame) -> Self {
+        PyDataFrame { df }
+    }
+}
+
+
 #[pymethods]
 impl DummyBb {
     #[new]
@@ -83,7 +104,8 @@ impl DummyBb {
     }
 
     // now is a time stamp of U64
-    fn now(&self) -> PyResult<i64> {
+    // TODO: implement DateTime return value method
+    fn timestamp(&self) -> PyResult<i64> {
         let t = self.now.timestamp();
     
         return Ok(t);
@@ -105,10 +127,13 @@ impl DummyBb {
     }
 
     #[getter]
-    fn get_history(&self) -> PyResult<String> {
+    fn get_history(&mut self) -> PyResult<PyDataFrame> {
         // TODO: retum must by numpy object
+        let data_frame = self.market.df();
 
-        return Ok("numpy object ".to_string());
+        let py_frame = PyDataFrame::new(data_frame);
+
+        return Ok(py_frame);
     }
 
     fn ohlcv(&self, width_sec: i32) -> PyResult<String> {
@@ -136,7 +161,7 @@ impl DummyBb {
         return Ok("numpy object ".to_string());
     }
 
-    fn run(&self) -> PyResult<String> {
+    fn run(&self, m: &PyModule) -> PyResult<String> {
         // TODO: retum must by numpy object
 
         return Ok("numpy object ".to_string());
@@ -174,7 +199,7 @@ fn test_plugin_all() {
     let mut bb = DummyBb::new();
 
     bb.get_balance();
-    bb.now();
+    bb.timestamp();
     bb.load_data(3);
     bb.make_order("BUY", 100.0, 10.0, 100);
     bb.get_history();
@@ -182,6 +207,6 @@ fn test_plugin_all() {
     bb.get_balance();
     bb.set_balance(100.0);
     bb.get_position();
-    bb.run();
+    // bb.run();
     bb.reslut();
 }

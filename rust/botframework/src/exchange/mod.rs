@@ -136,6 +136,14 @@ impl Market {
             }
         }
     }
+
+    pub fn df(&mut self) -> DataFrame {
+        // TODO: clone の動作を確認する。-> Deep cloneではあるが、そこそこ早い可能性あり。
+        // またコピーなので更新はしても、本体へは反映されない。
+        // https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.DataFrame.clone.html
+        return self.trade_history.clone();
+    }
+
 }
 
 #[test]

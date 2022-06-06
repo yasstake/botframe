@@ -2,6 +2,7 @@ use crate::exchange::Market;
 use crate::exchange::Trade;
 
 use crate::bb::log::load_log_file;
+use polars_core::prelude::DataFrame;
 
 use chrono::{Datelike, Utc, Duration};
 
@@ -48,6 +49,10 @@ impl Bb {
             self.download_exec_log(year, month, day);
             println!("load complete {}/{}/{}", year, month, day);
         }
+    }
+
+    pub fn df(&mut self) -> DataFrame {
+        return self.market.df();
     }
 }
 
