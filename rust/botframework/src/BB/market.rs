@@ -34,8 +34,10 @@ impl Bb {
     }
 
     // 過去N日分のログをダウンロードし、Maketクラスへロードする。
+    // 数個のログを確認したところ、概ねUTCで２：３０ごろに前日分のログができている。
+    // 年のため生成までに４時間とみたてて計算する。
     pub fn download_exec_log_ndays(&mut self, ndays: i32) {
-        let last_day = Utc::now() - Duration::days(1);
+        let last_day = Utc::now() - Duration::days(1) - Duration::hours(4); // 4H to delivery log.
 
         for i in (0..ndays).rev(){
             let log_date = last_day - Duration::days(i as i64);
@@ -56,7 +58,7 @@ impl Bb {
 async fn test_download_log_for_five_days() {
     // make instance of market
 
-    let bb = Bb::new();
+    let mut bb = Bb::new();
 
     bb.download_exec_log_ndays(5);
 }

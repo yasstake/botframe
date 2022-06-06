@@ -35,7 +35,7 @@ KLine形式で１分足ならばもっと長期間のログが取得可能。
 
 */
 
-use anyhow::Context;
+// use anyhow::Context;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

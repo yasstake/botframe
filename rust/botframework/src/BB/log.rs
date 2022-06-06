@@ -111,7 +111,7 @@ fn test_list_cache_files() {
     }
 }
 
-use reqwest::Client;
+// use reqwest::Client;
 use std::io::Cursor;
 
 // TODO: when 404 returns, make error or ignore.
@@ -128,7 +128,7 @@ async fn fetch_url(url: String, file_name: String) -> BbResult<()> {
     }
 }
 
-use std::io::{stdout, Write};
+// use std::io::{stdout, Write};
 
 #[tokio::main]
 #[test]

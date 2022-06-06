@@ -1,4 +1,6 @@
 use pyo3::prelude::*;
+use pyo3::types::PyDateTime;
+use pyo3::types::PyInt;
 
 #[macro_use]
 extern crate anyhow;
@@ -6,9 +8,9 @@ extern crate directories;
 
 extern crate time;
 
+
 pub mod bb;
 pub mod exchange;
-
 
 
 /*
@@ -58,8 +60,7 @@ class Agent:
 */
 
 use crate::bb::market::Bb;
-use chrono::{Datelike, Utc, Duration, DateTime};
-
+use chrono::{Utc, DateTime};
 
 
 #[pyclass(module = "rbot")]
@@ -77,15 +78,18 @@ impl DummyBb {
         return DummyBb{
             market: Bb::new(),
             balance: 0.0,
-            now: DateTime::now()
+            now: Utc::now()
         };
     }
 
-    fn now(&self) -> PyResult<String> {
-        return Ok(self.now.to_str());
+    // now is a time stamp of U64
+    fn now(&self) -> PyResult<i64> {
+        let t = self.now.timestamp();
+    
+        return Ok(t);
     }
 
-    fn load_data(&self, ndays: usize) {
+    fn load_data(&mut self, ndays: usize) {
         //TODO:
         println!("Loading log file for past ndays");
 
@@ -162,4 +166,22 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DummyBb>()?;
 
     Ok(())
+}
+
+
+#[test]
+fn test_plugin_all() {
+    let mut bb = DummyBb::new();
+
+    bb.get_balance();
+    bb.now();
+    bb.load_data(3);
+    bb.make_order("BUY", 100.0, 10.0, 100);
+    bb.get_history();
+    bb.ohlcv(100);
+    bb.get_balance();
+    bb.set_balance(100.0);
+    bb.get_position();
+    bb.run();
+    bb.reslut();
 }
