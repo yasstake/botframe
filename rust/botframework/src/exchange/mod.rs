@@ -163,3 +163,23 @@ fn test_add_trad_and_flush() {
     }
     market.flush_add_trade();
 }
+
+#[test]
+fn test_export_arrow() {
+    let mut market = Market::new();
+
+    for i in 0..3000000 {
+        let trade = Trade {
+            time_ns: i * 100,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY,
+            id: "asdfasf".to_string(),
+        };
+
+        market.add_trade(trade);
+    }
+    market.flush_add_trade();
+
+
+}

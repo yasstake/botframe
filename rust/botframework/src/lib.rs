@@ -194,6 +194,7 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 
+
 #[test]
 fn test_plugin_all() {
     let mut bb = DummyBb::new();
@@ -210,3 +211,63 @@ fn test_plugin_all() {
     // bb.run();
     bb.reslut();
 }
+
+/*
+use arrow::{array::ArrayRef, ffi};
+use polars::prelude::*;
+use polars_arrow::export::arrow;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
+
+
+pub(crate) fn to_py_array(py: Python, pyarrow: &PyModule, array: ArrayRef) -> PyResult<PyObject> {
+    let array_ptr = Box::new(ffi::ArrowArray::empty());
+    let schema_ptr = Box::new(ffi::ArrowSchema::empty());
+
+    let array_ptr = Box::into_raw(array_ptr);
+    let schema_ptr = Box::into_raw(schema_ptr);
+
+    unsafe {
+        ffi::export_field_to_c(
+            &ArrowField::new("", array.data_type().clone(), true),
+            schema_ptr,
+        );
+        ffi::export_array_to_c(array, array_ptr);
+    };
+
+    let array = pyarrow.getattr("Array")?.call_method1(
+        "_import_from_c",
+        (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
+    )?;
+
+    unsafe {
+        Box::from_raw(array_ptr);
+        Box::from_raw(schema_ptr);
+    };
+
+    Ok(array.to_object(py))
+}
+
+pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
+    // ensure we have a single chunk
+    let series = series.rechunk();
+    let array = series.to_arrow(0);
+
+    // acquire the gil
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+    // import pyarrow
+    let pyarrow = py.import("pyarrow")?;
+
+    // pyarrow array
+    let pyarrow_array = to_py_array(py, pyarrow, array)?;
+
+    // import polars
+    let polars = py.import("polars")?;
+    let out = polars.call_method1("from_arrow", (pyarrow_array,))?;
+    Ok(out.to_object(py))
+}
+
+
+*/
