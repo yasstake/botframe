@@ -18,3 +18,12 @@ datafusion-common = { version = "^8.0.0", features = ["pyarrow"] }
 
 # tokio
 tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread", "sync"] }
+
+polars = "0.22.0"
+polars-core = {version = "0.22.3", features=["ndarray"]}
+smartcore = { version = "0.2.0", default-features = false, features=["nalgebra-bindings", "ndarray-bindings", "datasets"]}
+polars-lazy = "0.22.0"
+
+arrow="15.0.0"
+
+
