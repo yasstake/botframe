@@ -10,3 +10,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.16.3", features = ["extension-module"] }
+
+# for data fusion
+datafusion = { version = "^8.0.0", features = ["pyarrow"] }
+datafusion-expr = { version = "^8.0.0" }
+datafusion-common = { version = "^8.0.0", features = ["pyarrow"] }
+
+# tokio
+tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread", "sync"] }
