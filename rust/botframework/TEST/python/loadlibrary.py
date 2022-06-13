@@ -1,10 +1,11 @@
 
 
+import polars as pl
 import rbot
 
 bb = rbot.DummyBb()
 
-bb.load_data(10)
+bb.load_data(20)
 
 bb.make_order("BUY", 10000.0, 10.0, 100)
 
@@ -27,6 +28,12 @@ print(result)
 result = bb.reslut
 print(result)
 
+df = pl.DataFrame()
+
+history=bb.history
+print(history)
+
+df2 = pl.DataFrame(history)
 
 
 

@@ -130,14 +130,12 @@ async fn fetch_url(url: String, file_name: String) -> BbResult<()> {
 
 // use std::io::{stdout, Write};
 
-#[tokio::main]
-#[test]
+#[tokio::test]
 async fn test_download_log_file() -> BbResult<()> {
     return download_exec_logfile(2022, 06, 01).await;
 }
 
-#[tokio::main]
-#[test]
+#[tokio::test]
 async fn test_open_exec_log_file() -> BbResult<()> {
     let f = open_exec_log_file(2022, 5, 3).await;
 
