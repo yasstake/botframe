@@ -79,7 +79,7 @@ struct DummyBb {
 
 #[pyclass]
 #[repr(transparent)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PyDataFrame {
     pub df: DataFrame,
 }
@@ -210,6 +210,18 @@ fn test_plugin_all() {
     bb.get_position();
     // bb.run();
     bb.reslut();
+}
+
+
+#[test]
+fn test_python_call() {
+    Python::with_gil(|py| {
+        let polars = py.import("polars").unwrap();
+
+        let df_any = polars.call_method0("DataFrame").unwrap();
+
+        println!("{}", df_any);
+    })    
 }
 
 /*
