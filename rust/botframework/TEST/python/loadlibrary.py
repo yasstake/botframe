@@ -36,6 +36,11 @@ print(history)
 df2 = pl.DataFrame(history)
 
 
+d = pl.Datetime()
+pl.datetime(year, month, day)
+
+pl.Time()
+
 
 
 

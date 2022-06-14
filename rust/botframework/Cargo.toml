@@ -36,5 +36,8 @@ directories= "4.0.1"
 
 chrono="0.4.19"
 
+numpy = "*"
+ndarray = "*"
+
 
 

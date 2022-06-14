@@ -144,6 +144,10 @@ impl Market {
         return self.trade_history.clone();
     }
 
+    pub fn ohlcv(&mut self) -> numpy::PyArray2<
+
+    >
+
 }
 
 #[test]
