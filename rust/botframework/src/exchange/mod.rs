@@ -170,6 +170,11 @@ impl Market {
     pub fn _print_head_history(&mut self) {
         println!("{}", self.trade_history.head(Some(5)));
     }
+
+    pub fn _print_tail_history(&mut self) {
+        println!("{}", self.trade_history.tail(Some(5)));
+    }
+
     /*
     pub fn ohlcv(&mut self) -> numpy::PyArray2<
 

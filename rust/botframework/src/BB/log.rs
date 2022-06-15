@@ -158,6 +158,7 @@ pub async fn load_log_file(
     callback: fn(m: &mut Market, t: &Trade),
     market: &mut Market,
 ) {
+    println!("Open:{} {} {}", yyyy, mm, dd);
     let f = open_exec_log_file(yyyy, mm, dd).await;
 
     let buf_read = std::io::BufReader::new(f);
@@ -173,7 +174,6 @@ pub async fn load_log_file(
 
             match message::parse_log_rec(&row) {
                 Ok(trade) => {
-                    println!("laoding{}{}", trade.time_ns, trade.id);
                     callback(market, &trade);
                 }
                 Err(_) => {

@@ -146,7 +146,7 @@ fn test_is_valid_hedader() {
 
 #[test]
 fn test_from_csv_rec() {
-    const TRADE_LINE: &str = "1651449616,BTCUSD,Buy,1,38463.50,ZeroMinusTick,cb731e0e-55e6-551f-81c8-286b9e20e361,2599.867406762255,1,2.599867406762255e-05";
+    const TRADE_LINE: &str = "1651449616,BTCUSD,Buy,1,loa,ZeroMinusTick,cb731e0e-55e6-551f-81c8-286b9e20e361,2599.867406762255,1,2.599867406762255e-05";
 
     let rec = parse_log_rec(TRADE_LINE).unwrap();
 
