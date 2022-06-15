@@ -18,9 +18,9 @@ impl Bb {
     }
 
     pub async fn download_exec_log(&mut self, yyyy: i32, mm: i32, dd: i32) {
-        fn insert_callback(m: &mut Market, t: Trade) {
-            m.add_trade(t);
-            // println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
+        fn insert_callback(m: &mut Market, t: &Trade) {
+            m.append_trade(t);
+            println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
         }
         // then load log
         load_log_file(2022, 6, 1, insert_callback, &mut self.market).await;
@@ -62,8 +62,8 @@ async fn test_download_log() {
     // make instance of market
     let mut market = Market::new();
 
-    fn insert_callback(m: &mut Market, t: Trade) {
-        m.add_trade(t);
+    fn insert_callback(m: &mut Market, t: &Trade) {
+        m.append_trade(t);
         // println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
     }
 
@@ -79,8 +79,8 @@ pub async fn make_market() {
     // make instance of market
     let mut market = Market::new();
 
-    fn insert_callback(m: &mut Market, t: Trade) {
-        m.add_trade(t);
+    fn insert_callback(m: &mut Market, t: &Trade) {
+        m.append_trade(t);
         // println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
     }
 
@@ -91,3 +91,14 @@ pub async fn make_market() {
 
     // insert log to market
 }
+
+
+#[test]
+fn test_load_data_and_print() {
+    let mut market = Bb::new();
+
+    market.download_exec_log_ndays(2);
+ 
+    market.market._print_head_history();
+}
+

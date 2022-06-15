@@ -81,6 +81,7 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
 
     match File::open(&path_name) {
         Ok(f) => {
+            println!("open {}", path_name);
             return f;
         }
         Err(e) => {
@@ -154,13 +155,14 @@ pub async fn load_log_file(
     yyyy: i32,
     mm: i32,
     dd: i32,
-    callback: fn(m: &mut Market, t: Trade),
+    callback: fn(m: &mut Market, t: &Trade),
     market: &mut Market,
 ) {
     let f = open_exec_log_file(yyyy, mm, dd).await;
 
     let buf_read = std::io::BufReader::new(f);
     let gzip_reader = std::io::BufReader::new(GzDecoder::new(buf_read)).lines();
+
 
     for (i, l) in gzip_reader.enumerate() {
         // first line is a header
@@ -171,7 +173,8 @@ pub async fn load_log_file(
 
             match message::parse_log_rec(&row) {
                 Ok(trade) => {
-                    callback(market, trade);
+                    println!("laoding{}{}", trade.time_ns, trade.id);
+                    callback(market, &trade);
                 }
                 Err(_) => {
                     println!("log load error");
@@ -179,10 +182,10 @@ pub async fn load_log_file(
             }
         }
     }
+    market.flush_add_trade();
 }
 
 use chrono::{Datelike, Utc, Duration};
-
 
 
 #[test]

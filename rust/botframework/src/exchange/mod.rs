@@ -15,6 +15,7 @@ pub struct Trade {
     pub id: String,
 }
 
+#[derive(Debug)]
 struct TradeBlock {
     time_ns: Vec<i64>,
     price: Vec<f32>,
@@ -42,12 +43,12 @@ impl TradeBlock {
         self.id.clear();
     }
 
-    fn add_trade(&mut self, trade: Trade) {
+    fn append_trade(&mut self, trade: &Trade) {
         self.time_ns.push(trade.time_ns);
         self.price.push(trade.price);
         self.size.push(trade.size);
         self.bs.push(trade.bs);
-        self.id.push(trade.id);
+        self.id.push(trade.id.clone());
     }
 
     fn to_data_frame(&mut self) -> DataFrame {
@@ -82,7 +83,7 @@ fn test_add_trade() {
             id: "asdfasf".to_string(),
         };
 
-        tb.add_trade(t);
+        tb.append_trade(&t);
     }
 
     println!("{}", tb.id.len());
@@ -101,7 +102,7 @@ fn test_to_data_frame() {
             id: "asdfasf".to_string(),
         };
 
-        tb.add_trade(t);
+        tb.append_trade(&t);
     }
     println!("{}", tb.id.len());
 
@@ -123,8 +124,8 @@ impl Market {
         };
     }
 
-    pub fn add_trade(&mut self, trade: Trade) {
-        self.trade_buffer.add_trade(trade);
+    pub fn append_trade(&mut self, trade: &Trade) {
+        self.trade_buffer.append_trade(trade);
     }
 
     pub fn flush_add_trade(&mut self) {
@@ -133,8 +134,10 @@ impl Market {
             .vstack(&self.trade_buffer.to_data_frame())
         {
             Ok(df) => {
+                println!("append{}", df.shape().0);
                 self.trade_history = df;
-                self.trade_buffer = TradeBlock::new();
+                //self.trade_buffer = TradeBlock::new();
+                self.trade_buffer.clear();
             }
             Err(err) => {
                 println!("Err {}", err)
@@ -164,7 +167,7 @@ impl Market {
         self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
     }
 
-    fn _print_head_history(&mut self) {
+    pub fn _print_head_history(&mut self) {
         println!("{}", self.trade_history.head(Some(5)));
     }
     /*
@@ -187,7 +190,7 @@ fn test_history_size_and_dupe_load() {
             id: "asdfasf".to_string(),
         };
 
-        market.add_trade(trade);
+        market.append_trade(&trade);
     }
     market.flush_add_trade();
 
@@ -205,7 +208,7 @@ fn test_history_size_and_dupe_load() {
             id: "asdfasf".to_string(),
         };
 
-        market.add_trade(trade);
+        market.append_trade(&trade);
     }
     market.flush_add_trade();
     let size = market.history_size();
@@ -232,7 +235,7 @@ fn test_add_trad_and_flush() {
             id: "asdfasf".to_string(),
         };
 
-        market.add_trade(trade);
+        market.append_trade(&trade);
     }
     market.flush_add_trade();
 }
@@ -250,7 +253,7 @@ fn test_make_history() {
             id: "asdfasf".to_string(),
         };
 
-        market.add_trade(trade);
+        market.append_trade(&trade);
     }
     market.flush_add_trade();
 }
