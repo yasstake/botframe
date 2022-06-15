@@ -23,10 +23,10 @@ url = "2.2.2"
 futures-util = "0.3.21"
 failure="0.1.8"
 
-polars = "0.22.0"
-polars-core = {version = "0.22.3", features=["ndarray"]}
-smartcore = { version = "0.2.0", default-features = false, features=["nalgebra-bindings", "ndarray-bindings", "datasets"]}
-polars-lazy = "0.22.0"
+polars = "0.22.7"
+polars-core = {version = "0.22.7", features=["ndarray", "temporal", "dtype-time"]}
+smartcore = { version = "0.2.1", default-features = false, features=["nalgebra-bindings", "ndarray-bindings", "datasets"]}
+polars-lazy = "0.22.7"
 
 flate2= "1.0.24"
 thiserror = "1.0.31"
@@ -36,8 +36,8 @@ directories= "4.0.1"
 
 chrono="0.4.19"
 
-numpy = "*"
-ndarray = "*"
+numpy = "0.16.2"
+ndarray = "0.15.4"
 
 
 

@@ -1,18 +1,86 @@
+use std::any::Any;
+
+use chrono::NaiveDateTime;
+use polars::datatypes::AnyValue;
+use polars::datatypes::DateChunked;
+use polars::datatypes::DatetimeChunked;
+use polars::datatypes::UInt64Chunked;
 use polars::prelude::DataFrame;
+use polars::prelude::IntoSeries;
 use polars::prelude::NamedFrom;
+use polars::prelude::NamedFromOwned;
 use polars::prelude::Series;
 
 pub const BUY: i32 = 1;
 pub const SELL: i32 = 2;
 
+/*
+use chrono::DateTime;
+use chrono::Utc;
+*/
+
+// use polars::datatypes::AnyValue;
+
+use polars::prelude::datatypes::DatetimeType;
+
 #[derive(Debug)]
 pub struct Trade {
-    pub time_ns: i64, // TODO: change to polas data type.
+    pub time_ns: i64,
     pub price: f32,
     pub size: f32,
     pub bs: i32,
     pub id: String,
 }
+
+//use polars::datatypes::DataType::Datetime;
+// use polars::datatypes::TimeType;
+
+//use polars::chunked_array::ChunkedArray::DateChunked::parse_from_str_slice;
+
+use polars_core::chunked_array::ChunkedArray;
+
+#[test]
+fn test1(){
+    let t:Vec<i64>= vec![1,2,3,4,5];
+
+
+    let av: Vec<AnyValue> = t.iter().map(|x| AnyValue::Time(*x)).collect();
+
+    println!("anyvalue={}", av[0]);
+
+
+    let t = AnyValue::Time(1);
+    let t2 = AnyValue::Time(1);    
+
+    let v  = vec![t, t2];
+
+    // println!("{}", t);
+
+//     let a :ChunkedArray<Time>= ChunkedArray::from("");
+
+    let s = Series::new("time", ["2021-10-21","2021-10-22"]);
+
+    println!("{}", s);
+    let dates = &[
+        "2020-08-21",
+        "2020-08-21",
+        "2020-08-22",
+        "2020-08-23",
+        "2020-08-22",
+        ];
+        // date format
+        let fmt = "%Y-%m-%d";
+        // create date series
+//        let s0 = DateChunked::from()
+                //.into_series();
+
+    // println!("{}", s0);
+}
+
+
+use polars::prelude::TimeUnit::Microseconds;
+
+
 
 struct TradeBlock {
     time_ns: Vec<i64>,
@@ -49,8 +117,51 @@ impl TradeBlock {
         self.id.push(trade.id);
     }
 
+//    use polars::chunked_array::ChunkedArray::ObjectChunked;
+
+
+
     fn to_data_frame(&mut self) -> DataFrame {
-        let time_s = Series::new("time_ns", &self.time_ns);
+        //let time_s = Series::new("time_ns", &self.time_ns);
+//         let date_time = &self.time_ns.into_
+
+
+//        let time_chunk = ObjectChunked<Time>
+
+        // let time_series =  self.time_ns.into_iter().collect::<UInt64Chunked>().into_series();
+/*
+        Series::new("time", time_series);
+        //Series::from_any_values("time", self.time_ns);
+*/
+/* 
+        let t1:NaiveDateTime = NaiveDateTime::from_timestamp(1, 0);
+        let t2:NaiveDateTime = NaiveDateTime::from_timestamp(2, 0);
+
+        let tv = vec!([t1,t2]);
+*/
+
+//        let s = DatetimeChunked::from_naive_datetime("name", tv, Microseconds);
+
+        //DateChunked::from_naive_date(name, v)
+
+
+        //
+//        let av: Vec<AnyValue> = self.time_ns.iter().map(|x| AnyValue::from(*x)).collect();        
+
+
+
+//        let time_s = Series::new("time_ns", &self.time_ns);
+
+//        let time_s = 
+                //DatetimeChunked::from_naive_datetime("time", &self.time_ns, Microseconds);
+
+        //let av: Vec<AnyValue> = self.time_ns.iter().map(|x| AnyValue::Time(*x)).collect();
+
+        
+        let av: Vec<NaiveDateTime> = self.time_ns.iter().map(|x|NaiveDateTime::from_timestamp(*x, 0)).collect();        
+        
+        
+        let time_s = Series::new("time", av);
         let price = Series::new("price", &self.price);
         let size = Series::new("size", &self.size);
         let bs = Series::new("bs", &self.bs);
@@ -121,8 +232,6 @@ impl Market {
     }
 
     pub fn flush_add_trade(&mut self) {
-        // append history
-        //self.trade_history.
         match self
             .trade_history
             .vstack(&self.trade_buffer.to_data_frame())
@@ -144,11 +253,78 @@ impl Market {
         return self.trade_history.clone();
     }
 
+    pub fn history_size(&mut self) -> i64 {
+        let (rec_no, col_no) = self.trade_history.shape();
+
+        println!("shape ({} {})", rec_no, col_no);
+
+        return rec_no as i64;
+    }
+
+    // 重複レコードを排除する
+    // DataFrameの作り直しとなるので比較的重い処理。
+    // （また古い処理らしい）
+    pub fn drop_duplicate_history(&mut self) {
+        self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
+    }
+
+    fn _print_head_history(&mut self) {
+        println!("{}", self.trade_history.head(Some(5)));
+    }
+    /*
     pub fn ohlcv(&mut self) -> numpy::PyArray2<
 
     >
+    */
+}
+
+#[test]
+fn test_history_size_and_dupe_load() {
+    let mut market = Market::new();
+
+    for i in 0..3000000 {
+        let trade = Trade {
+            time_ns: 100,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY,
+            id: "asdfasf".to_string(),
+        };
+
+        market.add_trade(trade);
+    }
+    market.flush_add_trade();
+
+    let size = market.history_size();
+    assert!(size == 3000000);
+
+    println!("size {}", market.history_size());
+
+    for i in 0..3000000 {
+        let trade = Trade {
+            time_ns: i * 100,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY,
+            id: "asdfasf".to_string(),
+        };
+
+        market.add_trade(trade);
+    }
+    market.flush_add_trade();
+    let size = market.history_size();
+
+    market._print_head_history();
+
+    println!("size {}", market.history_size());
+
+
+    market.drop_duplicate_history();
+    let size = market.history_size();
+    println!("size {}", market.history_size());
 
 }
+
 
 #[test]
 fn test_add_trad_and_flush() {
@@ -169,7 +345,7 @@ fn test_add_trad_and_flush() {
 }
 
 #[test]
-fn test_export_arrow() {
+fn test_make_history() {
     let mut market = Market::new();
 
     for i in 0..3000000 {
@@ -184,6 +360,4 @@ fn test_export_arrow() {
         market.add_trade(trade);
     }
     market.flush_add_trade();
-
-
 }
