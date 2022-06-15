@@ -80,7 +80,8 @@ fn is_valid_log_header(rec: &str) -> bool {
 
 pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
     const NUM_OF_REC: i32 = 10;
-    let row = rec.split(",");
+    let rec_trim = rec.trim();
+    let row = rec_trim.split(",");
 
     let mut time_ns: i64 = 0;
     let mut price: f32 = 0.0;

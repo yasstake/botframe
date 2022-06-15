@@ -3,6 +3,8 @@ use std::fs;
 use flate2::bufread::GzDecoder;
 
 use directories::ProjectDirs;
+use polars::prelude::PolarsTemporalGroupby;
+use polars::prelude::PolarsUpsample;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -207,3 +209,46 @@ fn test_ndays(){
         println!("{} {} {}", year, month, day);
     }
 }
+
+#[cfg(test)]
+use crate::bb::testdata::CSVDATA;
+
+#[cfg(test)]
+pub fn load_dummy_data() -> Market {
+    fn insert_callback(m: &mut Market, t: &Trade) {
+        m.append_trade(t);
+    }
+
+    let mut market = Market::new();
+
+
+    let data: String = CSVDATA.to_string();
+
+    for (i, l) in data.lines().enumerate() {
+        // first line is a header
+        if i == 0 {
+            // check if the header follows the format
+        } else {
+            let row = l;
+
+            match message::parse_log_rec(&row) {
+                Ok(trade) => {
+                    insert_callback(&mut market, &trade);
+                }
+                Err(_) => {
+                    println!("log load error {}", row);
+                }
+            }
+        }
+    }
+    market.flush_add_trade();
+
+    return market;
+}
+
+
+use polars::prelude::DynamicGroupOptions;
+use polars::prelude::ClosedWindow;
+
+use parse_duration::parse;
+

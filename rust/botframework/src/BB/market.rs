@@ -4,7 +4,10 @@ use crate::exchange::Trade;
 use crate::bb::log::load_log_file;
 use polars_core::prelude::DataFrame;
 
-use chrono::{Datelike, Duration, Utc};
+
+use chrono::Duration;
+use chrono::Utc;
+use chrono::Datelike;
 
 pub struct Bb {
     market: Market,

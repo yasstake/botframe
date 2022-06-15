@@ -262,3 +262,8 @@ fn test_make_history() {
     }
     market.flush_add_trade();
 }
+
+#[test]
+fn test_make_olhc() {
+
+}
