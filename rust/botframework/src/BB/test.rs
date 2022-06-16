@@ -46,9 +46,14 @@ use chrono::NaiveDateTime;
 fn test_for_each() {
     let mut m = load_dummy_data();
 
-
     let df = m.df();
 
+    let h = df.height();
+
+    for i in 0..h {
+        let row = df.get_row(i);
+        println!("{:?}", row);
+    }
 }
 
 

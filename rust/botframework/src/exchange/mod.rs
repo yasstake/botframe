@@ -4,15 +4,15 @@ use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
 use polars::prelude::Series;
 
-pub const BUY: i32 = 1;
-pub const SELL: i32 = 2;
+pub const BUY: &str = "B";
+pub const SELL: &str = "S";
 
 #[derive(Debug)]
 pub struct Trade {
     pub time_ns: i64,
     pub price: f32,
     pub size: f32,
-    pub bs: i32,
+    pub bs: String,
     pub id: String,
 }
 
@@ -21,7 +21,7 @@ struct TradeBlock {
     time_ns: Vec<i64>,
     price: Vec<f32>,
     size: Vec<f32>,
-    bs: Vec<i32>,
+    bs: Vec<String>,
     id: Vec<String>,
 }
 
@@ -48,7 +48,7 @@ impl TradeBlock {
         self.time_ns.push(trade.time_ns);
         self.price.push(trade.price);
         self.size.push(trade.size);
-        self.bs.push(trade.bs);
+        self.bs.push(trade.bs.to_string());
         self.id.push(trade.id.clone());
     }
 
@@ -80,7 +80,7 @@ fn test_add_trade() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -99,7 +99,7 @@ fn test_to_data_frame() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -296,7 +296,7 @@ fn test_history_size_and_dupe_load() {
             time_ns: 10000 * i,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -314,7 +314,7 @@ fn test_history_size_and_dupe_load() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -341,7 +341,7 @@ fn test_add_trad_and_flush() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -359,7 +359,7 @@ fn test_make_history() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY,
+            bs: BUY.to_string(),
             id: "asdfasf".to_string(),
         };
 

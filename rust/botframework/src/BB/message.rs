@@ -86,7 +86,7 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
     let mut time_ns: i64 = 0;
     let mut price: f32 = 0.0;
     let mut size: f32 = 0.0;
-    let mut bs: i32 = 0;
+    let mut bs: String = "".to_string();
     let mut id: String = "".to_string();
 
     for (i, col) in row.enumerate() {
@@ -99,8 +99,8 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
             2 => {
                 /* side */
                 match col {
-                    "Buy" => bs = BUY,
-                    "Sell" => bs = SELL,
+                    "Buy" => bs = BUY.to_string(),
+                    "Sell" => bs = SELL.to_string(),
                     _ => return Err(anyhow!("log record error {} {}", col, rec)),
                 }
             }
