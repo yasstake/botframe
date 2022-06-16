@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::exchange::Market;
 
 #[cfg(test)]
@@ -12,6 +14,8 @@ fn test_load_data() {
     load_test_data();
 }
 
+use polars::chunked_array::ChunkedArray;
+use polars::export::arrow::types::NativeType;
 use polars::prelude::groupby;
 use polars::prelude::ClosedWindow;
 use polars::prelude::DataFrame;
@@ -23,6 +27,15 @@ use polars::prelude::PolarsTemporalGroupby;
 #[cfg(test)]
 use crate::bb::log::load_dummy_data;
 
+use polars::prelude::AnyValue;
+use polars::prelude::UInt32Chunked;
+
+use polars_lazy::prelude::*;
+use polars::prelude::Series;
+
+// use polars_lazy::prelude::col;
+// use polars_lazy::frame::LazyGroupBy;
+
 // https://illumination-k.dev/techblog/posts/polars_pandas
 // ここをみながらテスト
 #[test]
@@ -33,6 +46,92 @@ fn test_load_dummy_data() {
     m._print_tail_history();
 
     let df = m.df();
+
+    let t = df.column("time").unwrap();
+
+    let new_t: Series = t.datetime().expect("nottype").into_iter().map(
+        |x| ((x.unwrap()/10000) as i64) * 10000
+    ).collect();
+
+    println!("{}", new_t);
+
+    /*
+    let dfl = m.df().lazy();
+    let sort_df = df.groupby_with_series(vec![new_t], true, true).unwrap()
+        .agg([
+        col("price").first().alias("open"),
+        col("price").max().alias("high"),
+        col("price").min().alias("low"),
+        col("price").last().alias("close"),
+        col("size").sum().alias("vol"),
+        ]
+    )
+    .sort("time", Default::default()).collect().unwrap();
+
+   */
+
+    let dfl = m.df().lazy();
+
+
+
+
+    
+    let g = dfl.groupby([col("time")])
+    .agg([
+        col("price").first().alias("open"),
+        col("price").max().alias("high"),
+        col("price").min().alias("low"),
+        col("price").last().alias("close"),
+        col("size").sum().alias("vol"),
+
+        /*
+        if(col("side")==1) {
+            col("size").sum().alias("vols"), 
+        }
+        */
+
+        ]
+    )
+    .sort("time", Default::default()).collect().unwrap();
+
+    println!("{}", g);
+
+    let dfl = m.df().lazy();
+
+    let g = (dfl.groupby_dynamic(
+        vec![],
+        DynamicGroupOptions {
+            index_column: "time".into(),
+            every: Duration::parse("60s"),
+            period: Duration::parse("60s"),
+            offset: Duration::parse("0"),
+            truncate: true,
+            include_boundaries: false,
+            closed_window: ClosedWindow::Left,
+        },
+    ))
+    .agg([
+            col("price").first(),
+
+            // col("price").max(),
+            /*            
+            col("price").min(),
+            col("price").last(),
+            */                        
+            col("size").sum(),
+            ]
+    )
+    .sort("time", Default::default()).collect().unwrap();
+
+    println!("{}", g);
+/*
+    //df.groupby([col("tbime")]).agg
+
+    //let new_time = time_chunk.iter().map(|x| x ).collect::<ChunkedArray<AnyValue>>();
+
+    // let new_chunk = time_chunk.iter().map(|x| {return (x as i32)}).collect::<UInt32Chunked>();
+
+*/
 
     // df.upsample(by, time_column, every, offset)
 
@@ -49,6 +148,7 @@ fn test_load_dummy_data() {
 
 //    let group = df.groupby("time")?.
 
+/*
     let (a, b, c) = (df.groupby_dynamic(
         vec![],
         &DynamicGroupOptions {
@@ -60,8 +160,8 @@ fn test_load_dummy_data() {
             include_boundaries: false,
             closed_window: ClosedWindow::Left,
         },
-    ))
-    .unwrap();
+    ));
+
 
     println!("{}", a);
     println!("{}", b.len());
@@ -83,4 +183,5 @@ fn test_load_dummy_data() {
     println!("Total = {} / {}", sum, df.shape().0);
 
     // df.groupby(by).upsample("time", "1s", "0s");
+*/    
 }
