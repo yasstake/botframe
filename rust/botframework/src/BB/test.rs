@@ -16,6 +16,7 @@ fn test_load_data() {
 
 use polars::chunked_array::ChunkedArray;
 use polars::export::arrow::types::NativeType;
+use polars::prelude::NamedFromOwned;
 use polars::prelude::groupby;
 use polars::prelude::ClosedWindow;
 use polars::prelude::DataFrame;
@@ -33,6 +34,9 @@ use polars::prelude::UInt32Chunked;
 use polars_lazy::prelude::*;
 use polars::prelude::Series;
 
+use chrono::NaiveDateTime;
+
+
 // use polars_lazy::prelude::col;
 // use polars_lazy::frame::LazyGroupBy;
 
@@ -49,11 +53,15 @@ fn test_load_dummy_data() {
 
     let t = df.column("time").unwrap();
 
-    let new_t: Series = t.datetime().expect("nottype").into_iter().map(
-        |x| ((x.unwrap()/10000) as i64) * 10000
+    let mut new_t: Series = t.datetime().expect("nottype").into_iter().map(
+        |x| (x.unwrap()/10000) as i64 * 10000
     ).collect();
 
+    new_t.rename("time_slot");
+
     println!("{}", new_t);
+
+    let mut new_df = df.hstack(&[new_t]).unwrap();
 
     /*
     let dfl = m.df().lazy();
@@ -70,19 +78,19 @@ fn test_load_dummy_data() {
 
    */
 
-    let dfl = m.df().lazy();
+    println!("{}", new_df.head(Some(5)));
 
+    let dfl = new_df.lazy();
 
-
-
-    
-    let g = dfl.groupby([col("time")])
+    let g = dfl.groupby([col("time_slot")])
     .agg([
+        col("time").first(),
         col("price").first().alias("open"),
         col("price").max().alias("high"),
         col("price").min().alias("low"),
         col("price").last().alias("close"),
         col("size").sum().alias("vol"),
+
 
         /*
         if(col("side")==1) {

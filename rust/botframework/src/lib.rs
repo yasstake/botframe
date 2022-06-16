@@ -28,8 +28,7 @@ Python からよびださされるモジュール
     exchange.load_data(ndays)
 
     // 取引所想定パラメータの設定 初めは不要。
-    exchange.exec_delay         //　執行時間ディレイ in sec
-
+    // exchange.exec_delay         //　執行時間ディレイ in sec
 
     create agent
         register call back
@@ -39,18 +38,23 @@ Python からよびださされるモジュール
         register call back
             order
 
-        exchange.make_order(side, price, volume, duration)
+        session.make_order(side, price, volume, duration)
 
-        exchange.history
-        exchagne.ohlcv
-        exchange.balance
-        exchange.position
+        session.history
+        session.ohlcv
+        session.balance
+        session.position
 
-    exchange.set_balance
 
-    // get ready?
-    exchange.run(agent)         // may be async method?
-    exchange.get_result()
+    session = exchange.new_session()
+
+
+    session.balance = 10000
+
+    agent = new_agent(session)
+    session.run(agent)
+
+    session.result
 
 
 
