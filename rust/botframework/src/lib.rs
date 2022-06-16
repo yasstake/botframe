@@ -393,6 +393,51 @@ fn test_python_call() {
     })
 }
 
+#[test]
+fn test_python_method_search() {
+    let pyscript = r#"
+        class Agent:
+            def __init__():
+                pass
+                
+            def on_exec(time_ns, buy_or_sell, price, volume):
+                print(time_ns, buy_or_sell, price, volume)
+
+            def on_tick(time_ns):
+                print(time_ns)
+
+            def other_func():
+                print("other")
+        "#;
+
+
+    Python::with_gil(|py| {
+        let result = PyModule::from_code(py, pyscript, "test.py", "test");
+
+        
+
+        /*
+        let polars = py.import("polars").unwrap();
+
+        let df_any = polars.call_method0("DataFrame").unwrap();
+        // let df_any = polars.call_method1("DataFrame", ([1,1])).unwrap();
+
+        println!("{}", df_any);
+        println!("{}", df_any.get_type().name().unwrap());
+
+        let r = df_any.call_method0("max").unwrap();
+        println!("max={}", r);
+
+        let r = df_any.get_type().call_method0("max").unwrap();
+        println!("{}", r);
+        */
+    }
+    );
+
+
+
+}
+
 /*
 use arrow::{array::ArrayRef, ffi};
 use polars::prelude::*;
