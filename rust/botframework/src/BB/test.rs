@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use crate::exchange::Market;
+use crate::exchange::MarketInfo;
 
 #[cfg(test)]
 fn load_test_data() -> Market {
@@ -39,6 +40,18 @@ use chrono::NaiveDateTime;
 
 // use polars_lazy::prelude::col;
 // use polars_lazy::frame::LazyGroupBy;
+
+
+#[test]
+fn test_for_each() {
+    let mut m = load_dummy_data();
+
+
+    let df = m.df();
+
+}
+
+
 
 // https://illumination-k.dev/techblog/posts/polars_pandas
 // ここをみながらテスト

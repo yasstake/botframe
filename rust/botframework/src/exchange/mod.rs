@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
 use polars::prelude::Series;
@@ -109,6 +110,21 @@ fn test_to_data_frame() {
     let _tb = tb.to_data_frame();
 }
 
+use numpy::ndarray;
+
+pub trait MaketAgent {
+    fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
+}
+
+pub trait MarketInfo {
+    fn df(&mut self) -> DataFrame;
+    fn ohlcv(&mut self, current_time_ns: i64, width: i32, count: i32) -> ndarray::Array2<f32>;
+    fn start_time(&self) -> i64;
+    fn end_time(&self) -> i64;
+    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64);
+}
+
+
 pub struct Market {
     // Use DataFrame
     trade_history: DataFrame,
@@ -145,13 +161,6 @@ impl Market {
         }
     }
 
-    pub fn df(&mut self) -> DataFrame {
-        // TODO: clone の動作を確認する。-> Deep cloneではあるが、そこそこ早い可能性あり。
-        // またコピーなので更新はしても、本体へは反映されない。
-        // https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.DataFrame.clone.html
-        return self.trade_history.clone();
-    }
-
     pub fn history_size(&mut self) -> i64 {
         let (rec_no, col_no) = self.trade_history.shape();
 
@@ -174,13 +183,109 @@ impl Market {
     pub fn _print_tail_history(&mut self) {
         println!("{}", self.trade_history.tail(Some(5)));
     }
-
-    /*
-    pub fn ohlcv(&mut self) -> numpy::PyArray2<
-
-    >
-    */
 }
+
+use polars_lazy::prelude::col;
+use polars_lazy::dsl::IntoLazy;
+use polars::prelude::Float32Type;
+
+use polars::chunked_array::comparison::*;
+
+impl MarketInfo for Market {
+    fn df(&mut self) -> DataFrame {
+        // TODO: clone の動作を確認する。-> Deep cloneではあるが、そこそこ早い可能性あり。
+        // またコピーなので更新はしても、本体へは反映されない。
+        // https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.DataFrame.clone.html
+        return self.trade_history.clone();
+    }
+
+    // TODO: 幅やながさの実装をする。
+    fn ohlcv(&mut self, current_time_ns: i64, width: i32, count: i32) -> ndarray::Array2<f32> {
+        
+        let df = &self.trade_history;
+
+        let t = df.column("time").unwrap();
+    
+        let mut new_t: Series = t.datetime().expect("nottype").into_iter().map(
+            |x| (x.unwrap()/10000) as i64 * 10000
+        ).collect();
+    
+        new_t.rename("time_slot");
+    
+        println!("{}", new_t);
+    
+        let mut new_df = df.hstack(&[new_t]).unwrap();
+    
+        let dfl = new_df.lazy();
+    
+        let g = dfl.groupby([col("time_slot")])
+        .agg([
+            col("time").first(),
+            col("price").first().alias("open"),
+            col("price").max().alias("high"),
+            col("price").min().alias("low"),
+            col("price").last().alias("close"),
+            col("size").sum().alias("vol"),
+            ]
+        )
+        .sort("time", Default::default()).collect().unwrap();
+        
+
+        let array: ndarray::Array2<f32>= g.select(&["open", "high", "low", "close"]).unwrap().to_ndarray::<Float32Type>().unwrap();
+
+        return array;
+    }
+
+    fn start_time(&self) -> i64 {
+        let time_s = self.trade_history.column("time").unwrap();
+        return time_s.min().unwrap();
+    }
+    fn end_time(&self) -> i64 {
+        let time_s = self.trade_history.column("time").unwrap();
+        return time_s.max().unwrap();
+    }
+
+
+
+    fn for_each(&mut self, agent: &dyn MaketAgent, mut start_time_ns: i64, mut end_time_ns: i64){
+        if start_time_ns == 0 {
+            start_time_ns = self.start_time();
+        }
+        else if start_time_ns < 0 {
+            start_time_ns = self.start_time() - start_time_ns;
+        }
+
+        if end_time_ns == 0 {
+            end_time_ns = self.end_time();
+        }
+        else if end_time_ns < 0 {
+            end_time_ns = self.end_time() + end_time_ns
+        }
+        println!("start {} - end {}", start_time_ns, end_time_ns);
+
+        let df = self.df();
+
+        //let mask = df.select(&cols(["time"])).
+        let mask = 
+                df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
+                & df.column("time").unwrap().lt(end_time_ns).unwrap();
+
+        let df = self.trade_history.filter(&mask).unwrap();
+
+        let l = df.height();
+
+        // TODO: may be slow?
+        for i in 0..l {
+            let row = df.get_row(i);
+
+        }
+
+    }
+
+}
+
+
+
 
 #[test]
 fn test_history_size_and_dupe_load() {

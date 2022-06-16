@@ -1,3 +1,6 @@
+use std::borrow::BorrowMut;
+
+use exchange::MarketInfo;
 use pyo3::prelude::*;
 // use pyo3::types::PyDateTime;
 // use pyo3::types::PyInt;
@@ -13,6 +16,12 @@ extern crate time;
 
 pub mod bb;
 pub mod exchange;
+
+use polars_lazy::prelude::*;
+use polars::prelude::Series;
+
+use chrono::NaiveDateTime;
+
 
 // use pyo3::PyTryInto::try_into;
 
@@ -72,15 +81,9 @@ use chrono::{DateTime, Utc};
 use numpy::IntoPyArray;
 use numpy::PyArray2;
 
-#[pyclass(module = "rbot")]
-struct DummyBb {
-    market: Bb,
-    balance: f32,
-    now: DateTime<Utc>,
-}
 
 //use polars::prelude::DataFrame;
-
+/* 
 #[pyclass]
 #[repr(transparent)]
 #[derive(Clone)]
@@ -97,6 +100,15 @@ impl PyDataFrame {
         Ok(&self.df)
     }
 }
+*/
+
+#[pyclass(module = "rbot")]
+struct DummyBb {
+    market: Bb,
+    balance: f32,
+    now: DateTime<Utc>,
+}
+
 
 #[pymethods]
 impl DummyBb {
@@ -110,6 +122,57 @@ impl DummyBb {
         };
     }
 
+    fn load_data(&mut self, ndays: usize) {
+        //TODO:
+        println!("Loading log file for past ndays");
+
+        self.market.download_exec_log_ndays(ndays as i32);
+    }
+
+    /*
+    fn create_session(&self) -> PyResult<Session> {
+        return Ok(Session::new());
+    }
+    */
+
+    fn ohlcv(&self, width_sec: i32) -> PyResult<String> {
+        // TODO: retum must by numpy object
+
+        return Ok("numpy object ".to_string());
+    }
+
+    fn _ohlcv(&self, _width: i32, _count: i32) -> Py<PyArray2<f64>> {
+        let gil = pyo3::Python::acquire_gil();
+        let py = gil.python();
+        let py_array2: &PyArray2<f64> = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_pyarray(py);
+        //  assert_eq!(py_array.as_slice().unwrap(), &[1, 2, 3]);
+        // &py_array2.to_owned();
+        
+        return py_array2.to_owned();
+    }
+
+
+}
+
+use crate::exchange::Market;
+
+/*
+#[pyclass(module = "rbot")]
+struct Session {
+    balance: f32,
+    market: Box<Market>
+}
+
+#[pymethods]
+impl Session {
+    #[new]
+    fn new(m: Market) -> Self {
+        return Session{
+            balance: 0.0,
+            market: m
+        };
+    }
+
     // now is a time stamp of U64
     // TODO: implement DateTime return value method
     fn timestamp(&self) -> PyResult<i64> {
@@ -118,15 +181,7 @@ impl DummyBb {
         return Ok(t);
     }
 
-    fn load_data(&mut self, ndays: usize) {
-        //TODO:
-        println!("Loading log file for past ndays");
-
-        self.market.download_exec_log_ndays(ndays as i32);
-    }
-
     fn make_order(&self, side: &str, price: f32, volume: f32, duration: i32) -> PyResult<String> {
-        // TODO:
         println!(
             "make order of side{} price={} vol={} duration={}",
             side, price, volume, duration
@@ -143,22 +198,6 @@ impl DummyBb {
         let py_frame = PyDataFrame::new(data_frame);
 
         return Ok(py_frame);
-    }
-
-    fn ohlcv(&self, width_sec: i32) -> PyResult<String> {
-        // TODO: retum must by numpy object
-
-        return Ok("numpy object ".to_string());
-    }
-
-    fn _ohlcv(&self, _width: i32, _count: i32) -> Py<PyArray2<f64>> {
-        let gil = pyo3::Python::acquire_gil();
-        let py = gil.python();
-        let py_array2: &PyArray2<f64> = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_pyarray(py);
-        //  assert_eq!(py_array.as_slice().unwrap(), &[1, 2, 3]);
-        // &py_array2.to_owned();
-        
-        return py_array2.to_owned();
     }
 
     #[getter]
@@ -192,7 +231,13 @@ impl DummyBb {
 
         return Ok("numpy object ".to_string());
     }
+
+    fn event(&self, time_ns: i64, event_type: &str, price: f32, size: f32) {
+
+    }
 }
+ */
+
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -214,6 +259,7 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
 fn test_plugin_all() {
     let mut bb = DummyBb::new();
 
+    /*
     bb.get_balance();
     bb.timestamp();
     bb.load_data(3);
@@ -225,6 +271,8 @@ fn test_plugin_all() {
     bb.get_position();
     // bb.run();
     bb.reslut();
+
+    */
 }
 
 #[pyclass]
@@ -298,7 +346,7 @@ fn test_python_call() {
         let r = df_any.get_type().call_method0("max").unwrap();
         println!("{}", r);
 
-        let c: PyDataFrame = df_any.extract().unwrap();
+        //let c: PyDataFrame = df_any.extract().unwrap();
 
         let b = df_any.get_item("").unwrap();
         println!("{}", b);
@@ -311,6 +359,7 @@ fn test_python_call() {
 
         let df_ptr = df_any.into_ptr();
 
+        /*
         unsafe {
             let s = df_ptr.cast::<PyDataFrame>();
 
@@ -318,6 +367,7 @@ fn test_python_call() {
 
             println!("Data Shape={} {}", shape.0, shape.1);
         }
+
 
         let b = df_any.is_instance_of::<PyDataFrame>().unwrap();
         println!("Instance is PyDataFrame {}", b);
@@ -339,6 +389,7 @@ fn test_python_call() {
         let df_py: PyRef<PyDataFrame> = df_any.extract().unwrap();
 
         //        println!("{}", df_py.);
+*/        
     })
 }
 

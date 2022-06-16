@@ -1,4 +1,5 @@
 use crate::exchange::Market;
+use crate::exchange::MarketInfo;
 use crate::exchange::Trade;
 
 use crate::bb::log::load_log_file;
@@ -68,9 +69,7 @@ async fn test_download_log() {
 
     fn insert_callback(m: &mut Market, t: &Trade) {
         m.append_trade(t);
-        // println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
     }
-
     // then load log
     load_log_file(2022, 6, 1, insert_callback, &mut market).await;
     load_log_file(2022, 6, 2, insert_callback, &mut market).await;
