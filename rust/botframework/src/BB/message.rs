@@ -136,23 +136,6 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
     });
 }
 
-#[test]
-fn test_is_valid_hedader() {
-    const HEADER1: &str = "timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
-    assert!(is_valid_log_header(HEADER1));
-
-    const HEADER2: &str = "stamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
-    assert!(is_valid_log_header(HEADER2) == false);
-}
-
-#[test]
-fn test_from_csv_rec() {
-    const TRADE_LINE: &str = "1651449616,BTCUSD,Buy,1,loa,ZeroMinusTick,cb731e0e-55e6-551f-81c8-286b9e20e361,2599.867406762255,1,2.599867406762255e-05";
-
-    let rec = parse_log_rec(TRADE_LINE).unwrap();
-
-    println!("{:?}", &rec);
-}
 
 //------------------------------------------------------------------------
 // WebSocket JSON format
@@ -267,6 +250,26 @@ impl TransactionId {
     }
 }
 
+
+#[test]
+fn test_is_valid_hedader() {
+    const HEADER1: &str = "timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
+    assert!(is_valid_log_header(HEADER1));
+
+    const HEADER2: &str = "stamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional";
+    assert!(is_valid_log_header(HEADER2) == false);
+}
+
+#[test]
+fn test_from_csv_rec() {
+    const TRADE_LINE: &str = "1651449616,BTCUSD,Buy,1,3845,ZeroMinusTick,cb731e0e-55e6-551f-81c8-286b9e20e361,2599.867406762255,1,2.599867406762255e-05";
+    
+    let rec = parse_log_rec(TRADE_LINE).unwrap();
+
+    println!("{:?}", &rec);
+}
+
+
 #[test]
 fn test_transaction_id() {
     const ID: &str = "00c706e1-ba52-5bb0-98d0-bf694bdc69f7";
@@ -284,5 +287,3 @@ fn test_transaction_id() {
     assert!(id.is_err());
 }
 
-#[test]
-fn test_all() {}
