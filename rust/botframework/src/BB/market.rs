@@ -55,8 +55,8 @@ impl MarketInfo for Bb {
         return self.market.df();
     }
 
-    fn ohlcv(&mut self, current_time_ns: i64, width_sec: i32, count: i32) -> ndarray::Array2<f32>{
-        return self.market.ohlcv(current_time_ns, width_sec, count);
+    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32>{
+        return self.market.ohlcv(current_time_ms, width_sec, count);
     }
 
     fn start_time(&self) -> i64 {

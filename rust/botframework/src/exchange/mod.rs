@@ -4,6 +4,7 @@ use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
 use polars::prelude::Series;
+use polars::prelude::SortOptions;
 
 pub const BUY: &str = "B";
 pub const SELL: &str = "S";
@@ -83,8 +84,13 @@ fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame 
     return df;
 }
 
-fn ohlcv_df_from_raw(df: &DataFrame, current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
-    let width_ms = (width_sec * 1_000);
+
+fn ohlcv_df_from_raw(df: &DataFrame, mut current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
+    if current_time_ms <= 0 {
+        current_time_ms = df.column("time").unwrap().max().unwrap();
+    }
+
+    let width_ms = width_sec * 1_000;
 
     let start_time_ms = ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64));
     let end_time_ms = current_time_ms;
@@ -108,8 +114,6 @@ fn ohlcv_df_from_raw(df: &DataFrame, current_time_ms: i64, width_sec: i64, count
 
     df.replace("time", new_t);
 
-//     let df = df.hstack(&[new_t]).unwrap();
-
     let df = df.lazy();
 
     let df = df
@@ -121,23 +125,12 @@ fn ohlcv_df_from_raw(df: &DataFrame, current_time_ms: i64, width_sec: i64, count
             col("price").last().alias("close"),
             col("size").sum().alias("vol"),
         ])
-        .sort("time", Default::default())
+        .sort("time", SortOptions{descending:true, nulls_last:false})
         .collect()
         .unwrap();
 
     return df;
-
-/*
-    let array: ndarray::Array2<f32> = g
-        .select(&["open", "high", "low", "close"])
-        .unwrap()
-        .to_ndarray::<Float32Type>()
-        .unwrap();
-
-    return array;
-*/    
 }
-
 
 
 pub trait MaketAgent {
@@ -146,7 +139,7 @@ pub trait MaketAgent {
 
 pub trait MarketInfo {
     fn df(&mut self) -> DataFrame;
-    fn ohlcv(&mut self, current_time_ns: i64, width_sec: i32, count: i32) -> ndarray::Array2<f32>;
+    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32>;
     fn start_time(&self) -> i64;
     fn end_time(&self) -> i64;
     fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64);
@@ -234,7 +227,6 @@ use polars::chunked_array::comparison::*;
 
 
 
-
 impl MarketInfo for Market {
     fn df(&mut self) -> DataFrame {
         // TODO: clone の動作を確認する。-> Deep cloneではあるが、そこそこ早い可能性あり。
@@ -244,41 +236,13 @@ impl MarketInfo for Market {
     }
 
     // TODO: 幅やながさの実装をする。
-    fn ohlcv(&mut self, current_time_ns: i64, width: i32, count: i32) -> ndarray::Array2<f32> {
+    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32> {
         let df = &self.trade_history;
 
-        let t = df.column("time").unwrap();
+        let df = ohlcv_df_from_raw(df, current_time_ms, width_sec, count);
 
-        let mut new_t: Series = t
-            .datetime()
-            .expect("nottype")
-            .into_iter()
-            .map(|x| (x.unwrap() / 10000) as i64 * 10000)
-            .collect();
-
-        new_t.rename("time_slot");
-
-        let new_df = df.hstack(&[new_t]).unwrap();
-
-        let dfl = new_df.lazy();
-
-        let g = dfl
-            .groupby([col("time_slot")])
-            .agg([
-                col("time").min(),
-                col("price").first().alias("open"),
-                col("price").max().alias("high"),
-                col("price").min().alias("low"),
-                col("price").last().alias("close"),
-                col("size").sum().alias("vol"),
-
-            ])
-            .sort("time", Default::default())
-            .collect()
-            .unwrap();
-
-        let array: ndarray::Array2<f32> = g
-            .select(&["open", "high", "low", "close"])
+        let array: ndarray::Array2<f32> = df
+            .select(&["open", "high", "low", "close", "vol"])
             .unwrap()
             .to_ndarray::<Float32Type>()
             .unwrap();
@@ -464,6 +428,9 @@ fn test_make_olhc() {
     let df = ohlcv_df_from_raw(&m.trade_history, last_time, 5, 1000);
     println!("{}", df.head(Some(12)));
     println!("5TOTAL={}", df.sum());
+
+    let array = m.ohlcv(last_time, 5, 1000);
+    println!("{}", array);
 
 }
 

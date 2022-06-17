@@ -30,49 +30,44 @@ Python からよびださされるモジュール
 
 想定利用方法イメージ：
 
+--- Agent
+
+class Agent:
+    def on_tick(self, session, time_ms)
+    def on_exec(self, session, time_ms, side, price, volume) // 後で実装
+
+
+---- Session API
+    session.run(agent, from, time_s)
+
+    session.timestamp_ms
+    session.make_order(side, price, volume, duration)
+
+    // session.history あとで実装
+    session.ohlcv
+    session.balance
+    // session.position あとで実装。まずは約定は重ねない。
+
+    session.result
+
+
+---- Main
     import rbot
 
     exchange = rbot.DummyBb()
-
     exchange.load_data(ndays)
 
     // 取引所想定パラメータの設定 初めは不要。
     // exchange.exec_delay         //　執行時間ディレイ in sec
 
-    create agent
-        register call back
-            tick()
-            time(day, hour, min, sec)
-
-        register call back
-            order
-
-        session.make_order(side, price, volume, duration)
-
-        session.history
-        session.ohlcv
-        session.balance
-        session.position
-
+    agent = Agent()
 
     session = exchange.new_session()
 
+    session.run(agent, 10)
 
-    session.balance = 10000
+    print(session.result)
 
-    agent = new_agent(session)
-    session.run(agent)
-
-    session.result
-
-
-
-
-
-class Agent:
-    on_tick():
-    on_time(day, hour, min, sec):
-    on_order(status, side, price, volume, id)
 */
 
 use crate::bb::market::Bb;
@@ -135,12 +130,16 @@ impl DummyBb {
     }
     */
 
-    fn ohlcv(&self, start_time: i64, _width: i32, _count: i32) -> Py<PyArray2<f64>> {
+    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f32>> {
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
-        let py_array2: &PyArray2<f64> = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_pyarray(py);
-        //  assert_eq!(py_array.as_slice().unwrap(), &[1, 2, 3]);
-        // &py_array2.to_owned();
+
+        let array = self.market.ohlcv(current_time_ms, width_sec, count);
+
+        println!("s:{}", current_time_ms);
+        println!("{:?}", array);
+
+        let py_array2: &PyArray2<f32> = array.into_pyarray(py);
         
         return py_array2.to_owned();
     }

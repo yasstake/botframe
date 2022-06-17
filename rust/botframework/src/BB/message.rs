@@ -22,7 +22,7 @@ https://api.bybit.com/v2/public/trading-records?symbol=BTCUSD
 KLine形式で１分足ならばもっと長期間のログが取得可能。
 
 
-・WS（リアルタイム：過去は取得付加）
+・WS（リアルタイム：過去は取得不可。タイムスタンプがMS単位）
 
 {"topic":"ParseTradeMessage.BTCUSD",
  "data":[
