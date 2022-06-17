@@ -119,7 +119,7 @@ pub async fn make_market() {
 async fn test_load_data_and_print() {
     let mut market = Bb::new();
 
-    market.download_exec_log_ndays(10).await;
+    market.download_exec_log_ndays(2).await;
  
     market.market._print_head_history();
     market.market._print_tail_history();    

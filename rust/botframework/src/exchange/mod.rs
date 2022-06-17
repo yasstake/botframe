@@ -56,7 +56,7 @@ impl TradeBlock {
         let av: Vec<NaiveDateTime> = self
             .time_ns
             .iter()
-            .map(|x| NaiveDateTime::from_timestamp(*x, 0))
+            .map(|x| NaiveDateTime::from_timestamp(*x/1_000_000, (*x%1_000_000)as u32))
             .collect();
 
         let time_s = Series::new("time", av);
@@ -122,11 +122,9 @@ impl Market {
     }
 
     pub fn history_size(&mut self) -> i64 {
-        let (rec_no, col_no) = self.trade_history.shape();
+        let rec_no: i64 = self.trade_history.height() as i64;
 
-        println!("shape ({} {})", rec_no, col_no);
-
-        return rec_no as i64;
+        return rec_no;
     }
 
     // 重複レコードを排除する
@@ -134,6 +132,30 @@ impl Market {
     // （また古い処理らしい）
     pub fn drop_duplicate_history(&mut self) {
         self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
+    }
+
+    pub fn select_df(&mut self, mut start_time_ns: i64, mut end_time_ns: i64) -> DataFrame {
+        if start_time_ns == 0 {
+            start_time_ns = self.start_time();
+        } else if start_time_ns < 0 {
+            start_time_ns = self.start_time() - start_time_ns;
+        }
+
+        if end_time_ns == 0 {
+            end_time_ns = self.end_time();
+        } else if end_time_ns < 0 {
+            end_time_ns = self.end_time() + end_time_ns
+        }
+        println!("start {} - end {}", start_time_ns, end_time_ns);
+
+        let df = self.df();
+
+        let mask = df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
+            & df.column("time").unwrap().lt(end_time_ns).unwrap();
+
+        let df = self.trade_history.filter(&mask).unwrap();
+
+        return df;
     }
 
     pub fn _print_head_history(&mut self) {
@@ -213,28 +235,8 @@ impl MarketInfo for Market {
         return time_s.max().unwrap();
     }
 
-    fn for_each(&mut self, agent: &dyn MaketAgent, mut start_time_ns: i64, mut end_time_ns: i64) {
-        if start_time_ns == 0 {
-            start_time_ns = self.start_time();
-        } else if start_time_ns < 0 {
-            start_time_ns = self.start_time() - start_time_ns;
-        }
-
-        if end_time_ns == 0 {
-            end_time_ns = self.end_time();
-        } else if end_time_ns < 0 {
-            end_time_ns = self.end_time() + end_time_ns
-        }
-        println!("start {} - end {}", start_time_ns, end_time_ns);
-
-        let df = self.df();
-
-        //let mask = df.select(&cols(["time"])).
-        let mask = df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
-            & df.column("time").unwrap().lt(end_time_ns).unwrap();
-
-        let df = self.trade_history.filter(&mask).unwrap();
-
+    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64) {
+        let df = self.select_df(start_time_ns, end_time_ns);
         let l = df.height();
 
         // TODO: may be slow?
@@ -242,6 +244,7 @@ impl MarketInfo for Market {
             let row = df.get_row(i);
         }
     }
+
 }
 
 #[test]
@@ -311,9 +314,9 @@ fn test_add_trad_and_flush() {
 fn test_make_history() {
     let mut market = Market::new();
 
-    for i in 0..3000000 {
+    for i in 0..3_000_000 {
         let trade = Trade {
-            time_ns: i * 100,
+            time_ns: i * 1_000_000,
             price: 1.0,
             size: 1.1,
             bs: BUY.to_string(),
@@ -324,8 +327,13 @@ fn test_make_history() {
     }
     market.flush_add_trade();
 
+    market._print_head_history();    
+    market._print_tail_history();
+
+    assert_eq!(market.history_size(), 3_000_000);
+
     assert_eq!(market.start_time(), 0);
-    assert_eq!(market.end_time(), 3000000*100);    
+    assert_eq!(market.end_time(), 2_999_999*1_000_000);    
 }
 
 #[test]

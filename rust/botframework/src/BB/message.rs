@@ -94,6 +94,7 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
             0 => {
                 /*timestamp*/
                 time_ns = col.parse::<i64>()?;
+                time_ns *= 1_000_000;
             }
             1 => { /* symbol IGNORE */ }
             2 => {
