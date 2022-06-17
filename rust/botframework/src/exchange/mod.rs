@@ -1,3 +1,4 @@
+
 use chrono::NaiveDateTime;
 use ndarray::Data;
 use polars::prelude::ChunkCompare;
@@ -9,11 +10,13 @@ use polars::prelude::SortOptions;
 pub const BUY: &str = "B";
 pub const SELL: &str = "S";
 
+pub mod session;
+
 #[derive(Debug)]
 pub struct Trade {
     pub time_ns: i64,
-    pub price: f32,
-    pub size: f32,
+    pub price: f64,
+    pub size: f64,
     pub bs: String,
     pub id: String,
 }
@@ -21,8 +24,8 @@ pub struct Trade {
 #[derive(Debug)]
 struct TradeBlock {
     time_ns: Vec<i64>,
-    price: Vec<f32>,
-    size: Vec<f32>,
+    price: Vec<f64>,
+    size: Vec<f64>,
     bs: Vec<String>,
     id: Vec<String>,
 }
@@ -138,8 +141,8 @@ pub trait MaketAgent {
 }
 
 pub trait MarketInfo {
-    fn df(&mut self) -> DataFrame;
-    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32>;
+    fn _df(&mut self) -> DataFrame;
+    fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
     fn start_time(&self) -> i64;
     fn end_time(&self) -> i64;
     fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64);
@@ -207,7 +210,7 @@ impl Market {
             end_time_ms = self.end_time() + end_time_ms
         }
         
-        return select_df(&self.df(), start_time_ms, end_time_ms);
+        return select_df(&self._df(), start_time_ms, end_time_ms);
     }
 
     pub fn _print_head_history(&mut self) {
@@ -219,7 +222,7 @@ impl Market {
     }
 }
 
-use polars::prelude::Float32Type;
+use polars::prelude::Float64Type;
 use polars_lazy::dsl::IntoLazy;
 use polars_lazy::prelude::col;
 
@@ -228,33 +231,35 @@ use polars::chunked_array::comparison::*;
 
 
 impl MarketInfo for Market {
-    fn df(&mut self) -> DataFrame {
+    fn _df(&mut self) -> DataFrame {
         // TODO: clone の動作を確認する。-> Deep cloneではあるが、そこそこ早い可能性あり。
         // またコピーなので更新はしても、本体へは反映されない。
         // https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.DataFrame.clone.html
         return self.trade_history.clone();
     }
 
-    // TODO: 幅やながさの実装をする。
-    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32> {
+    // プライベート用
+    fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64> {
         let df = &self.trade_history;
 
         let df = ohlcv_df_from_raw(df, current_time_ms, width_sec, count);
 
-        let array: ndarray::Array2<f32> = df
-            .select(&["open", "high", "low", "close", "vol"])
+        let array: ndarray::Array2<f64> = df
+            .select(&["time", "open", "high", "low", "close", "vol"])
             .unwrap()
-            .to_ndarray::<Float32Type>()
+            .to_ndarray::<Float64Type>()
             .unwrap();
 
         return array;
     }
 
+    // TODO: error handling calling before data load
     fn start_time(&self) -> i64 {
         let time_s = self.trade_history.column("time").unwrap();
         return time_s.min().unwrap();
     }
 
+    // TODO: error handling calling before data load    
     fn end_time(&self) -> i64 {
         let time_s = self.trade_history.column("time").unwrap();
         return time_s.max().unwrap();
@@ -429,7 +434,7 @@ fn test_make_olhc() {
     println!("{}", df.head(Some(12)));
     println!("5TOTAL={}", df.sum());
 
-    let array = m.ohlcv(last_time, 5, 1000);
+    let array = m._ohlcv(last_time, 5, 1000);
     println!("{}", array);
 
 }

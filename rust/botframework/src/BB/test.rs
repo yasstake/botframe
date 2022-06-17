@@ -46,7 +46,7 @@ use chrono::NaiveDateTime;
 fn test_for_each() {
     let mut m = load_dummy_data();
 
-    let df = m.df();
+    let df = m._df();
 
     let h = df.height();
 
@@ -67,7 +67,7 @@ pub fn test_load_dummy_data() {
     m._print_head_history();
     m._print_tail_history();
 
-    let df = m.df();
+    let df = m._df();
 
     let t = df.column("time").unwrap();
 
@@ -122,7 +122,7 @@ pub fn test_load_dummy_data() {
 
     println!("{}", g);
 
-    let dfl = m.df().lazy();
+    let dfl = m._df().lazy();
 
     let g = (dfl.groupby_dynamic(
         vec![],

@@ -14,7 +14,7 @@ use crate::bb::log::load_log_file;
 
 
 pub struct Bb {
-    market: Market,
+    pub market: Market,
 }
 
 impl Bb {
@@ -51,12 +51,12 @@ impl Bb {
 
 // Delegate to self.market  <Market>type
 impl MarketInfo for Bb {
-    fn df(&mut self) -> DataFrame {
-        return self.market.df();
+    fn _df(&mut self) -> DataFrame {
+        return self.market._df();
     }
 
-    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f32>{
-        return self.market.ohlcv(current_time_ms, width_sec, count);
+    fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64>{
+        return self.market._ohlcv(current_time_ms, width_sec, count);
     }
 
     fn start_time(&self) -> i64 {

@@ -83,8 +83,8 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
     let row = rec_trim.split(",");
 
     let mut time_ns: i64 = 0;
-    let mut price: f32 = 0.0;
-    let mut size: f32 = 0.0;
+    let mut price: f64 = 0.0;
+    let mut size: f64 = 0.0;
     let mut bs: String = "".to_string();
     let mut id: String = "".to_string();
 
@@ -106,11 +106,11 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
             }
             3 => {
                 /* size */
-                size = col.parse::<f32>()?;
+                size = col.parse::<f64>()?;
             }
             4 => {
                 /* price */
-                price = col.parse::<f32>()?;
+                price = col.parse::<f64>()?;
             }
             5 => { /* tickDirection IGNORE */ }
             6 => {

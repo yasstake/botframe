@@ -1,6 +1,8 @@
+use std::borrow::Borrow;
 use std::borrow::BorrowMut;
 
 use exchange::MarketInfo;
+use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::prelude::*;
 // use pyo3::types::PyDateTime;
 // use pyo3::types::PyInt;
@@ -46,6 +48,7 @@ class Agent:
     // session.history あとで実装
     session.ohlcv
     session.balance
+    session.indicator(key, value)
     // session.position あとで実装。まずは約定は重ねない。
 
     session.result
@@ -57,16 +60,11 @@ class Agent:
     exchange = rbot.DummyBb()
     exchange.load_data(ndays)
 
-    // 取引所想定パラメータの設定 初めは不要。
-    // exchange.exec_delay         //　執行時間ディレイ in sec
-
     agent = Agent()
 
-    session = exchange.new_session()
+    result = exchange.run(agent 10)
 
-    session.run(agent, 10)
-
-    print(session.result)
+    print(result)
 
 */
 
@@ -77,41 +75,33 @@ use numpy::IntoPyArray;
 use numpy::PyArray2;
 
 
-//use polars::prelude::DataFrame;
-/* 
-#[pyclass]
-#[repr(transparent)]
-#[derive(Clone)]
-pub struct PyDataFrame {
-    pub df: DataFrame,
-}
-
-impl PyDataFrame {
-    pub(crate) fn new(df: DataFrame) -> Self {
-        PyDataFrame { df }
-    }
-
-    pub(crate) fn try_into(&self) -> PyResult<&DataFrame> {
-        Ok(&self.df)
-    }
-}
-*/
-
 #[pyclass(module = "rbot")]
 struct DummyBb {
-    market: Bb
+    market: Bb,
 }
 
 use async_std::task;
 
 #[pymethods]
-impl DummyBb {
+impl DummyBb{
     #[new]
     fn new() -> Self {
         return DummyBb {
             market: Bb::new()
         };
     }
+
+    /*
+    fn new_session(&mut self) -> PyResult<Session> {
+        let session = Session{
+            balance: 0.0,
+            market: self.market.market.borrow(),
+            timestamp_ms:0
+        };
+
+        return Ok(session);
+    }
+    */
 
     // 過去ndays分のログをダウンロードしてロードする。
     fn load_data(&mut self, ndays: usize) {
@@ -130,16 +120,16 @@ impl DummyBb {
     }
     */
 
-    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f32>> {
+    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
 
-        let array = self.market.ohlcv(current_time_ms, width_sec, count);
+        let array = self.market._ohlcv(current_time_ms, width_sec, count);
 
         println!("s:{}", current_time_ms);
         println!("{:?}", array);
 
-        let py_array2: &PyArray2<f32> = array.into_pyarray(py);
+        let py_array2: &PyArray2<f64> = array.into_pyarray(py);
         
         return py_array2.to_owned();
     }
@@ -155,31 +145,49 @@ impl DummyBb {
     }
 }
 
+use crate::exchange::session::Session;
+
+
 use crate::exchange::Market;
+
+
+
+#[pyclass(module = "rbot")]
+struct PySession {
+
+}
+
+
+
 
 /*
 #[pyclass(module = "rbot")]
 struct Session {
-    balance: f32,
-    market: Box<Market>
+    timestamp_ms: i64,
+    balance: f64,
+    market: &'py Market
+}
+
+fn find_agent_method(pyObj: PyAny, method_name: &str) -> bool{
+   let methods = pyObj.dir();
+
+    match methods.contains(method_name) {
+        Ok(r) => {
+            return r;
+        }
+        Err(err)       => {
+            println!("{:?}", err);
+            return false;
+        }
+    };
 }
 
 #[pymethods]
 impl Session {
-    #[new]
-    fn new(m: Market) -> Self {
-        return Session{
-            balance: 0.0,
-            market: m
-        };
-    }
-
     // now is a time stamp of U64
     // TODO: implement DateTime return value method
     fn timestamp(&self) -> PyResult<i64> {
-        let t = self.now.timestamp();
-
-        return Ok(t);
+       return Ok(self.timestamp_ms);
     }
 
     fn make_order(&self, side: &str, price: f32, volume: f32, duration: i32) -> PyResult<String> {
@@ -191,6 +199,7 @@ impl Session {
         return Ok("order id string(maybe guid)".to_string());
     }
 
+    /*
     #[getter]
     fn get_history(&mut self) -> PyResult<PyDataFrame> {
         // TODO: retum must by numpy object
@@ -200,25 +209,26 @@ impl Session {
 
         return Ok(py_frame);
     }
+    */
 
     #[getter]
-    fn get_balance(&self) -> PyResult<f32> {
-        // TODO: retum must by numpy object
-
+    fn get_balance(&self) -> PyResult<f64> {
         return Ok(self.balance);
     }
 
     #[setter]
-    fn set_balance(&mut self, balance: f32) {
+    fn set_balance(&mut self, balance: f64) {
         self.balance = balance;
     }
 
+    /*
     #[getter]
     fn get_position(&self) -> PyResult<String> {
         // TODO: retum must by numpy object
 
         return Ok("numpy object ".to_string());
     }
+    */
 
     fn run(&self, m: &PyModule) -> PyResult<String> {
         // TODO: retum must by numpy object
@@ -232,12 +242,8 @@ impl Session {
 
         return Ok("numpy object ".to_string());
     }
-
-    fn event(&self, time_ns: i64, event_type: &str, price: f32, size: f32) {
-
-    }
 }
- */
+*/
 
 
 /// Formats the sum of two numbers as string.
@@ -330,6 +336,37 @@ fn test_downcast() {
     });
 }
 
+use pyo3::types::PyTuple;
+
+
+#[test]
+fn test_market_call() {
+    let code: &str = 
+r#"class Agent:
+    def __init__(self):
+        pass
+            
+    def on_message(self, market):
+        print("market")
+        print(market.start_time)
+"#;
+
+
+    Python::with_gil(|py| {
+        let pymodule = PyModule::from_code(py, code, "", "").unwrap();
+
+        let rbot = py.import("rbot").unwrap();
+
+        let bb = rbot.call_method0("DummyBb").unwrap();
+
+        let agent = pymodule.call_method0("Agent").unwrap();
+
+        let args = PyTuple::new(py, &[bb]);
+        let result = agent.call_method1("on_message", args).unwrap();
+
+    })
+}
+
 #[test]
 fn test_python_call() {
     Python::with_gil(|py| {
@@ -340,6 +377,16 @@ fn test_python_call() {
 
         println!("{}", df_any);
         println!("{}", df_any.get_type().name().unwrap());
+
+        let shape_any  = df_any.getattr("shape");
+        println!("shape{:?}", shape_any);
+        
+        let dirs = df_any.dir();
+        println!("dir {}", dirs);
+
+        let methods = df_any.get_type().get_item("shape");
+        // let  = df_any.get_item("shape");
+        println!("{:?}", methods);
 
         let r = df_any.call_method0("max").unwrap();
         println!("max={}", r);
@@ -415,7 +462,7 @@ fn test_python_method_search() {
     Python::with_gil(|py| {
         let result = PyModule::from_code(py, pyscript, "test.py", "test");
 
-        
+
 
         /*
         let polars = py.import("polars").unwrap();
