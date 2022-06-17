@@ -4,14 +4,14 @@ use crate::exchange::Market;
 use crate::exchange::MarketInfo;
 
 #[cfg(test)]
-fn load_test_data() -> Market {
+pub fn load_test_data() -> Market {
     let market = Market::new();
 
     return market;
 }
 
 #[test]
-fn test_load_data() {
+pub fn test_load_data() {
     load_test_data();
 }
 
@@ -61,7 +61,7 @@ fn test_for_each() {
 // https://illumination-k.dev/techblog/posts/polars_pandas
 // ここをみながらテスト
 #[test]
-fn test_load_dummy_data() {
+pub fn test_load_dummy_data() {
     let mut m = load_dummy_data();
 
     m._print_head_history();

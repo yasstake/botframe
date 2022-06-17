@@ -3,8 +3,6 @@ use std::fs;
 use flate2::bufread::GzDecoder;
 
 use directories::ProjectDirs;
-use polars::prelude::PolarsTemporalGroupby;
-use polars::prelude::PolarsUpsample;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -47,20 +45,6 @@ fn bb_log_file_name(yyyy: i32, mm: i32, dd: i32) -> String {
     return format!("BTCUSD{:04}-{:02}-{:02}.csv.gz", yyyy, mm, dd);
 }
 
-#[test]
-fn test_log_file_path_operations() {
-    // assert_eq!(log_file_path(2022, 6, 2), "~/BBLOG/BTCUSD/BTCUSD2022-06-02.csv.gz");
-    println!("log_dir={}", log_file_path(2022, 6, 2));
-
-    assert_eq!(
-        log_download_url(2022, 6, 3),
-        "https://public.bybit.com/trading/BTCUSD/BTCUSD2022-06-03.csv.gz"
-    );
-    println!("log url={}", log_download_url(2022, 6, 3));
-
-    assert_eq!(bb_log_file_name(2022, 6, 2), "BTCUSD2022-06-02.csv.gz");
-    println!("log filename ={}", bb_log_file_name(2022, 6, 2));
-}
 
 // Download log file
 // Download Log file from bybit archive specified date(YYYY, MM, DD)
@@ -86,11 +70,12 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
             return f;
         }
         Err(e) => {
-            download_exec_logfile(yyyy, mm, dd).await;
-
-            return File::open(&path_name).expect("open error");
+            println!("try download");
         }
     }
+
+    download_exec_logfile(yyyy, mm, dd).await;
+    return File::open(&path_name).expect("open error");
 }
 
 #[test]
@@ -186,28 +171,9 @@ pub async fn load_log_file(
     market.flush_add_trade();
 }
 
+#[cfg(test)]
 use chrono::{Datelike, Utc, Duration};
 
-
-#[test]
-fn test_ndays(){
-    let last_day = Utc::now() - Duration::days(1);
-   
-    println!("{} {}-{}-{}", last_day, 
-        last_day.year(), last_day.month(), last_day.day());
-
-
-    let days = 10;
-
-    for i in (0..days).rev(){
-        let log_date = last_day - Duration::days(i);
-        let year = log_date.year();
-        let month = log_date.month() as i32;
-        let day = log_date.day() as i32;
-
-        println!("{} {} {}", year, month, day);
-    }
-}
 
 #[cfg(test)]
 use crate::bb::testdata::CSVDATA;
@@ -246,8 +212,37 @@ pub fn load_dummy_data() -> Market {
 }
 
 
-use polars::prelude::DynamicGroupOptions;
-use polars::prelude::ClosedWindow;
+#[test]
+fn test_log_file_path_operations() {
+    // assert_eq!(log_file_path(2022, 6, 2), "~/BBLOG/BTCUSD/BTCUSD2022-06-02.csv.gz");
+    println!("log_dir={}", log_file_path(2022, 6, 2));
 
-use parse_duration::parse;
+    assert_eq!(
+        log_download_url(2022, 6, 3),
+        "https://public.bybit.com/trading/BTCUSD/BTCUSD2022-06-03.csv.gz"
+    );
+    println!("log url={}", log_download_url(2022, 6, 3));
 
+    assert_eq!(bb_log_file_name(2022, 6, 2), "BTCUSD2022-06-02.csv.gz");
+    println!("log filename ={}", bb_log_file_name(2022, 6, 2));
+}
+
+#[test]
+fn test_ndays(){
+    let last_day = Utc::now() - Duration::days(1);
+   
+    println!("{} {}-{}-{}", last_day, 
+        last_day.year(), last_day.month(), last_day.day());
+
+
+    let days = 10;
+
+    for i in (0..days).rev(){
+        let log_date = last_day - Duration::days(i);
+        let year = log_date.year();
+        let month = log_date.month() as i32;
+        let day = log_date.day() as i32;
+
+        println!("{} {} {}", year, month, day);
+    }
+}

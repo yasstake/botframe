@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use ndarray::Data;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
@@ -59,19 +60,85 @@ impl TradeBlock {
             .map(|x| NaiveDateTime::from_timestamp(*x/1_000_000, (*x%1_000_000)as u32))
             .collect();
 
-        let time_s = Series::new("time", av);
+        let time = Series::new("time", av);
         let price = Series::new("price", &self.price);
         let size = Series::new("size", &self.size);
         let bs = Series::new("bs", &self.bs);
         let id = Series::new("id", &self.id);
 
-        let df = DataFrame::new(vec![time_s, price, size, bs, id]).unwrap();
+        let df = DataFrame::new(vec![time, price, size, bs, id]).unwrap();
 
         return df;
     }
 }
 
 use numpy::ndarray;
+
+fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
+    let mask = df.column("time").unwrap().gt_eq(start_time_ms).unwrap()
+        & df.column("time").unwrap().lt(end_time_ms).unwrap();
+
+    let df = df.filter(&mask).unwrap();
+
+    return df;
+}
+
+fn ohlcv_df_from_raw(df: &DataFrame, current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
+    let width_ms = (width_sec * 1_000);
+
+    let start_time_ms = ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64));
+    let end_time_ms = current_time_ms;
+
+    let mut df = select_df(df, start_time_ms, end_time_ms);
+    let t = df.column("time").unwrap();
+    
+    let vec_t:Vec<NaiveDateTime> = 
+        t
+        .datetime()
+        .expect("Type Error")
+        .into_iter()
+        .map(|x|
+             (
+                NaiveDateTime::from_timestamp((x.unwrap()/1_000/width_sec) * width_sec, 0)
+            )
+        )
+        .collect();
+
+    let new_t: Series = Series::new("time_slot", vec_t);
+
+    df.replace("time", new_t);
+
+//     let df = df.hstack(&[new_t]).unwrap();
+
+    let df = df.lazy();
+
+    let df = df
+        .groupby([col("time")])
+        .agg([
+            col("price").first().alias("open"),
+            col("price").max().alias("high"),
+            col("price").min().alias("low"),
+            col("price").last().alias("close"),
+            col("size").sum().alias("vol"),
+        ])
+        .sort("time", Default::default())
+        .collect()
+        .unwrap();
+
+    return df;
+
+/*
+    let array: ndarray::Array2<f32> = g
+        .select(&["open", "high", "low", "close"])
+        .unwrap()
+        .to_ndarray::<Float32Type>()
+        .unwrap();
+
+    return array;
+*/    
+}
+
+
 
 pub trait MaketAgent {
     fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
@@ -134,28 +201,20 @@ impl Market {
         self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
     }
 
-    pub fn select_df(&mut self, mut start_time_ns: i64, mut end_time_ns: i64) -> DataFrame {
-        if start_time_ns == 0 {
-            start_time_ns = self.start_time();
-        } else if start_time_ns < 0 {
-            start_time_ns = self.start_time() - start_time_ns;
+    pub fn select_df(&mut self, mut start_time_ms: i64, mut end_time_ms: i64) -> DataFrame {
+        if start_time_ms == 0 {
+            start_time_ms = self.start_time();
+        } else if start_time_ms < 0 {
+            start_time_ms = self.start_time() - start_time_ms;
         }
 
-        if end_time_ns == 0 {
-            end_time_ns = self.end_time();
-        } else if end_time_ns < 0 {
-            end_time_ns = self.end_time() + end_time_ns
+        if end_time_ms == 0 {
+            end_time_ms = self.end_time();
+        } else if end_time_ms < 0 {
+            end_time_ms = self.end_time() + end_time_ms
         }
-        println!("start {} - end {}", start_time_ns, end_time_ns);
-
-        let df = self.df();
-
-        let mask = df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
-            & df.column("time").unwrap().lt(end_time_ns).unwrap();
-
-        let df = self.trade_history.filter(&mask).unwrap();
-
-        return df;
+        
+        return select_df(&self.df(), start_time_ms, end_time_ms);
     }
 
     pub fn _print_head_history(&mut self) {
@@ -172,6 +231,9 @@ use polars_lazy::dsl::IntoLazy;
 use polars_lazy::prelude::col;
 
 use polars::chunked_array::comparison::*;
+
+
+
 
 impl MarketInfo for Market {
     fn df(&mut self) -> DataFrame {
@@ -196,21 +258,20 @@ impl MarketInfo for Market {
 
         new_t.rename("time_slot");
 
-        println!("{}", new_t);
-
-        let mut new_df = df.hstack(&[new_t]).unwrap();
+        let new_df = df.hstack(&[new_t]).unwrap();
 
         let dfl = new_df.lazy();
 
         let g = dfl
             .groupby([col("time_slot")])
             .agg([
-                col("time").first(),
+                col("time").min(),
                 col("price").first().alias("open"),
                 col("price").max().alias("high"),
                 col("price").min().alias("low"),
                 col("price").last().alias("close"),
                 col("size").sum().alias("vol"),
+
             ])
             .sort("time", Default::default())
             .collect()
@@ -327,8 +388,8 @@ fn test_make_history() {
     }
     market.flush_add_trade();
 
-    market._print_head_history();    
-    market._print_tail_history();
+    //market._print_head_history();    
+    //market._print_tail_history();
 
     assert_eq!(market.history_size(), 3_000_000);
 
@@ -337,7 +398,74 @@ fn test_make_history() {
 }
 
 #[test]
-fn test_make_olhc() {}
+fn test_df_select() {
+    let mut market = Market::new();
+
+    for i in 0..(24*60*60) {
+        let trade = Trade {
+            time_ns: i * 1_000_000,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY.to_string(),
+            id: "asdfasf".to_string(),
+        };
+
+        market.append_trade(&trade);
+    }
+    market.flush_add_trade();
+
+    market._print_head_history();    
+    market._print_tail_history();
+
+    let df = market.select_df(1, 999);
+    assert_eq!(df.height(), 0);
+
+    let df = market.select_df(0, 999);
+    assert_eq!(df.height(), 1);
+
+    let df = market.select_df(1, 1_000);
+    assert_eq!(df.height(), 0);
+
+    let df = market.select_df(0, 1_000);
+    assert_eq!(df.height(), 1);
+
+    println!("{}", df.tail(Some(5)));
+}
+
+#[cfg(test)]
+use crate::bb::log::load_dummy_data;
+
+#[test]
+fn test_make_olhc() {
+    let mut m = load_dummy_data();
+
+    let start_time = m.start_time();
+    println!("start_time {}", start_time);
+    let last_time = m.end_time();
+    println!("end_time {}", last_time);
+
+    let rec_no = m.history_size();
+    println!("hisorysize={}", rec_no);
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 1, 1000);
+    println!("{}", df.head(Some(12)));
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 2, 1000);
+    println!("{}", df.head(Some(12)));
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 120, 1000);
+    println!("{}", df.head(Some(12)));
+    println!("120TOTAL={}", df.sum());    
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 10, 1000);
+    println!("{}", df.head(Some(12)));
+    println!("10TOTAL={}", df.sum());
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 5, 1000);
+    println!("{}", df.head(Some(12)));
+    println!("5TOTAL={}", df.sum());
+
+}
 
 #[test]
 fn test_add_trade() {
