@@ -1,14 +1,17 @@
-use crate::exchange::Market;
-use crate::exchange::MarketInfo;
-use crate::exchange::Trade;
-
-use crate::bb::log::load_log_file;
 use polars_core::prelude::DataFrame;
-
 
 use chrono::Duration;
 use chrono::Utc;
 use chrono::Datelike;
+
+use crate::exchange::Market;
+use crate::exchange::MarketInfo;
+use crate::exchange::MaketAgent;
+use crate::exchange::Trade;
+
+use crate::bb::log::load_log_file;
+
+
 
 pub struct Bb {
     market: Market,
@@ -24,7 +27,6 @@ impl Bb {
     pub async fn download_exec_log(&mut self, yyyy: i32, mm: i32, dd: i32) {
         fn insert_callback(m: &mut Market, t: &Trade) {
             m.append_trade(t);
-            // println!("{} {} {} {}",t.time_ns, t.bs, t.price, t.size)
         }
         // then load log
         load_log_file(yyyy, mm, dd, insert_callback, &mut self.market).await;
@@ -42,16 +44,33 @@ impl Bb {
             let month = log_date.month() as i32;
             let day = log_date.day() as i32;
 
-            println!("load start {}/{}/{}", year, month, day);
             self.download_exec_log(year, month, day).await;
-            println!("load complete {}/{}/{}", year, month, day);
         }
     }
+}
 
-    pub fn df(&mut self) -> DataFrame {
+// Delegate to self.market  <Market>type
+impl MarketInfo for Bb {
+    fn df(&mut self) -> DataFrame {
         return self.market.df();
     }
+
+    fn ohlcv(&mut self, current_time_ns: i64, width_sec: i32, count: i32) -> ndarray::Array2<f32>{
+        return self.market.ohlcv(current_time_ns, width_sec, count);
+    }
+
+    fn start_time(&self) -> i64 {
+        return self.market.start_time();
+    }
+    fn end_time(&self) -> i64 {
+        return self.market.end_time();
+    }
+
+    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64){
+        self.market.for_each(agent, start_time_ns, end_time_ns);
+    }
 }
+
 
 #[tokio::test]
 async fn test_download_log_for_five_days() {

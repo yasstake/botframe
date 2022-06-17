@@ -83,7 +83,6 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
 
     match File::open(&path_name) {
         Ok(f) => {
-            println!("open {}", path_name);
             return f;
         }
         Err(e) => {

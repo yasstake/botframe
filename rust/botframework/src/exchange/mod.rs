@@ -71,45 +71,6 @@ impl TradeBlock {
     }
 }
 
-#[test]
-fn test_add_trade() {
-    let mut tb = TradeBlock::new();
-
-    for i in 0..3000000 {
-        let t = Trade {
-            time_ns: i * 100,
-            price: 1.0,
-            size: 1.1,
-            bs: BUY.to_string(),
-            id: "asdfasf".to_string(),
-        };
-
-        tb.append_trade(&t);
-    }
-
-    println!("{}", tb.id.len());
-}
-
-#[test]
-fn test_to_data_frame() {
-    let mut tb = TradeBlock::new();
-
-    for i in 0..3000000 {
-        let t = Trade {
-            time_ns: i * 100,
-            price: 1.0,
-            size: 1.1,
-            bs: BUY.to_string(),
-            id: "asdfasf".to_string(),
-        };
-
-        tb.append_trade(&t);
-    }
-    println!("{}", tb.id.len());
-
-    let _tb = tb.to_data_frame();
-}
-
 use numpy::ndarray;
 
 pub trait MaketAgent {
@@ -118,12 +79,11 @@ pub trait MaketAgent {
 
 pub trait MarketInfo {
     fn df(&mut self) -> DataFrame;
-    fn ohlcv(&mut self, current_time_ns: i64, width: i32, count: i32) -> ndarray::Array2<f32>;
+    fn ohlcv(&mut self, current_time_ns: i64, width_sec: i32, count: i32) -> ndarray::Array2<f32>;
     fn start_time(&self) -> i64;
     fn end_time(&self) -> i64;
     fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64);
 }
-
 
 pub struct Market {
     // Use DataFrame
@@ -185,9 +145,9 @@ impl Market {
     }
 }
 
-use polars_lazy::prelude::col;
-use polars_lazy::dsl::IntoLazy;
 use polars::prelude::Float32Type;
+use polars_lazy::dsl::IntoLazy;
+use polars_lazy::prelude::col;
 
 use polars::chunked_array::comparison::*;
 
@@ -201,37 +161,44 @@ impl MarketInfo for Market {
 
     // TODO: 幅やながさの実装をする。
     fn ohlcv(&mut self, current_time_ns: i64, width: i32, count: i32) -> ndarray::Array2<f32> {
-        
         let df = &self.trade_history;
 
         let t = df.column("time").unwrap();
-    
-        let mut new_t: Series = t.datetime().expect("nottype").into_iter().map(
-            |x| (x.unwrap()/10000) as i64 * 10000
-        ).collect();
-    
-        new_t.rename("time_slot");
-    
-        println!("{}", new_t);
-    
-        let mut new_df = df.hstack(&[new_t]).unwrap();
-    
-        let dfl = new_df.lazy();
-    
-        let g = dfl.groupby([col("time_slot")])
-        .agg([
-            col("time").first(),
-            col("price").first().alias("open"),
-            col("price").max().alias("high"),
-            col("price").min().alias("low"),
-            col("price").last().alias("close"),
-            col("size").sum().alias("vol"),
-            ]
-        )
-        .sort("time", Default::default()).collect().unwrap();
-        
 
-        let array: ndarray::Array2<f32>= g.select(&["open", "high", "low", "close"]).unwrap().to_ndarray::<Float32Type>().unwrap();
+        let mut new_t: Series = t
+            .datetime()
+            .expect("nottype")
+            .into_iter()
+            .map(|x| (x.unwrap() / 10000) as i64 * 10000)
+            .collect();
+
+        new_t.rename("time_slot");
+
+        println!("{}", new_t);
+
+        let mut new_df = df.hstack(&[new_t]).unwrap();
+
+        let dfl = new_df.lazy();
+
+        let g = dfl
+            .groupby([col("time_slot")])
+            .agg([
+                col("time").first(),
+                col("price").first().alias("open"),
+                col("price").max().alias("high"),
+                col("price").min().alias("low"),
+                col("price").last().alias("close"),
+                col("size").sum().alias("vol"),
+            ])
+            .sort("time", Default::default())
+            .collect()
+            .unwrap();
+
+        let array: ndarray::Array2<f32> = g
+            .select(&["open", "high", "low", "close"])
+            .unwrap()
+            .to_ndarray::<Float32Type>()
+            .unwrap();
 
         return array;
     }
@@ -240,25 +207,22 @@ impl MarketInfo for Market {
         let time_s = self.trade_history.column("time").unwrap();
         return time_s.min().unwrap();
     }
+
     fn end_time(&self) -> i64 {
         let time_s = self.trade_history.column("time").unwrap();
         return time_s.max().unwrap();
     }
 
-
-
-    fn for_each(&mut self, agent: &dyn MaketAgent, mut start_time_ns: i64, mut end_time_ns: i64){
+    fn for_each(&mut self, agent: &dyn MaketAgent, mut start_time_ns: i64, mut end_time_ns: i64) {
         if start_time_ns == 0 {
             start_time_ns = self.start_time();
-        }
-        else if start_time_ns < 0 {
+        } else if start_time_ns < 0 {
             start_time_ns = self.start_time() - start_time_ns;
         }
 
         if end_time_ns == 0 {
             end_time_ns = self.end_time();
-        }
-        else if end_time_ns < 0 {
+        } else if end_time_ns < 0 {
             end_time_ns = self.end_time() + end_time_ns
         }
         println!("start {} - end {}", start_time_ns, end_time_ns);
@@ -266,9 +230,8 @@ impl MarketInfo for Market {
         let df = self.df();
 
         //let mask = df.select(&cols(["time"])).
-        let mask = 
-                df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
-                & df.column("time").unwrap().lt(end_time_ns).unwrap();
+        let mask = df.column("time").unwrap().gt_eq(start_time_ns).unwrap()
+            & df.column("time").unwrap().lt(end_time_ns).unwrap();
 
         let df = self.trade_history.filter(&mask).unwrap();
 
@@ -277,15 +240,9 @@ impl MarketInfo for Market {
         // TODO: may be slow?
         for i in 0..l {
             let row = df.get_row(i);
-
         }
-
     }
-
 }
-
-
-
 
 #[test]
 fn test_history_size_and_dupe_load() {
@@ -366,9 +323,49 @@ fn test_make_history() {
         market.append_trade(&trade);
     }
     market.flush_add_trade();
+
+    assert_eq!(market.start_time(), 0);
+    assert_eq!(market.end_time(), 3000000*100);    
 }
 
 #[test]
-fn test_make_olhc() {
+fn test_make_olhc() {}
 
+#[test]
+fn test_add_trade() {
+    let mut tb = TradeBlock::new();
+
+    for i in 0..3000000 {
+        let t = Trade {
+            time_ns: i * 100,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY.to_string(),
+            id: "asdfasf".to_string(),
+        };
+
+        tb.append_trade(&t);
+    }
+
+    println!("{}", tb.id.len());
+}
+
+#[test]
+fn test_to_data_frame() {
+    let mut tb = TradeBlock::new();
+
+    for i in 0..3000000 {
+        let t = Trade {
+            time_ns: i * 100,
+            price: 1.0,
+            size: 1.1,
+            bs: BUY.to_string(),
+            id: "asdfasf".to_string(),
+        };
+
+        tb.append_trade(&t);
+    }
+    println!("{}", tb.id.len());
+
+    let _tb = tb.to_data_frame();
 }

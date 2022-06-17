@@ -104,29 +104,29 @@ impl PyDataFrame {
 
 #[pyclass(module = "rbot")]
 struct DummyBb {
-    market: Bb,
-    balance: f32,
-    now: DateTime<Utc>,
+    market: Bb
 }
 
+use async_std::task;
 
 #[pymethods]
 impl DummyBb {
     #[new]
     fn new() -> Self {
-        println!("DummyBb is created{}", "");
         return DummyBb {
-            market: Bb::new(),
-            balance: 0.0,
-            now: Utc::now(),
+            market: Bb::new()
         };
     }
 
+    // 過去ndays分のログをダウンロードしてロードする。
     fn load_data(&mut self, ndays: usize) {
-        //TODO:
-        println!("Loading log file for past ndays");
-
-        self.market.download_exec_log_ndays(ndays as i32);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(
+                self.market.download_exec_log_ndays(ndays as i32)
+            );
     }
 
     /*
@@ -135,13 +135,7 @@ impl DummyBb {
     }
     */
 
-    fn ohlcv(&self, width_sec: i32) -> PyResult<String> {
-        // TODO: retum must by numpy object
-
-        return Ok("numpy object ".to_string());
-    }
-
-    fn _ohlcv(&self, _width: i32, _count: i32) -> Py<PyArray2<f64>> {
+    fn ohlcv(&self, start_time: i64, _width: i32, _count: i32) -> Py<PyArray2<f64>> {
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
         let py_array2: &PyArray2<f64> = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_pyarray(py);
@@ -151,7 +145,15 @@ impl DummyBb {
         return py_array2.to_owned();
     }
 
+    #[getter]
+    fn get_start_time(&self) -> PyResult<i64> {
+        return Ok(self.market.start_time());
+    }
 
+    #[getter]
+    fn get_end_time(&self) -> PyResult<i64> {
+        return Ok(self.market.end_time());
+    }
 }
 
 use crate::exchange::Market;
