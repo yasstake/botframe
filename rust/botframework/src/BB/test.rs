@@ -81,20 +81,6 @@ pub fn test_load_dummy_data() {
 
     let mut new_df = df.hstack(&[new_t]).unwrap();
 
-    /*
-    let dfl = m.df().lazy();
-    let sort_df = df.groupby_with_series(vec![new_t], true, true).unwrap()
-        .agg([
-        col("price").first().alias("open"),
-        col("price").max().alias("high"),
-        col("price").min().alias("low"),
-        col("price").last().alias("close"),
-        col("size").sum().alias("vol"),
-        ]
-    )
-    .sort("time", Default::default()).collect().unwrap();
-
-   */
 
     println!("{}", new_df.head(Some(5)));
 
@@ -122,92 +108,4 @@ pub fn test_load_dummy_data() {
 
     println!("{}", g);
 
-    let dfl = m._df().lazy();
-
-    let g = (dfl.groupby_dynamic(
-        vec![],
-        DynamicGroupOptions {
-            index_column: "time".into(),
-            every: Duration::parse("60s"),
-            period: Duration::parse("60s"),
-            offset: Duration::parse("0"),
-            truncate: true,
-            include_boundaries: false,
-            closed_window: ClosedWindow::Left,
-        },
-    ))
-    .agg([
-            col("price").first(),
-
-            // col("price").max(),
-            /*            
-            col("price").min(),
-            col("price").last(),
-            */                        
-            col("size").sum(),
-            ]
-    )
-    .sort("time", Default::default()).collect().unwrap();
-
-    println!("{}", g);
-/*
-    //df.groupby([col("tbime")]).agg
-
-    //let new_time = time_chunk.iter().map(|x| x ).collect::<ChunkedArray<AnyValue>>();
-
-    // let new_chunk = time_chunk.iter().map(|x| {return (x as i32)}).collect::<UInt32Chunked>();
-
-*/
-
-    // df.upsample(by, time_column, every, offset)
-
-    //df.groupby_rolling(by, options)
-    /*
-        let result =     (df.groupby_dynamic(vec!["time"], "1m"))
-            .agg([
-                pl.col("time").count(),
-                pl.col("time").max(),
-                pl.sum("values"),
-            ]);
-
-    */
-
-//    let group = df.groupby("time")?.
-
-/*
-    let (a, b, c) = (df.groupby_dynamic(
-        vec![],
-        &DynamicGroupOptions {
-            index_column: "time".into(),
-            every: Duration::parse("60s"),
-            period: Duration::parse("60s"),
-            offset: Duration::parse("0"),
-            truncate: true,
-            include_boundaries: false,
-            closed_window: ClosedWindow::Left,
-        },
-    ));
-
-
-    println!("{}", a);
-    println!("{}", b.len());
-
-    //c.sort();
-
-    let list_chunked = c.as_list_chunked();
-
-    println!("{}", list_chunked.name());
-
-    let mut sum = 0;
-    for g in c.iter() {
-        let n = g.len();
-        sum += n;
-
-        println!("{}", n);
-    }
-
-    println!("Total = {} / {}", sum, df.shape().0);
-
-    // df.groupby(by).upsample("time", "1s", "0s");
-*/    
 }

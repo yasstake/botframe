@@ -145,6 +145,15 @@ impl DummyBb{
     }
 }
 
+
+/// A Python module implemented in Rust.
+#[pymodule]
+fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<DummyBb>()?;
+
+    Ok(())
+}
+
 use crate::exchange::session::Session;
 
 
@@ -152,115 +161,9 @@ use crate::exchange::Market;
 
 
 
-#[pyclass(module = "rbot")]
-struct PySession {
-
-}
-
-
-
-
-/*
-#[pyclass(module = "rbot")]
-struct Session {
-    timestamp_ms: i64,
-    balance: f64,
-    market: &'py Market
-}
-
-fn find_agent_method(pyObj: PyAny, method_name: &str) -> bool{
-   let methods = pyObj.dir();
-
-    match methods.contains(method_name) {
-        Ok(r) => {
-            return r;
-        }
-        Err(err)       => {
-            println!("{:?}", err);
-            return false;
-        }
-    };
-}
-
-#[pymethods]
-impl Session {
-    // now is a time stamp of U64
-    // TODO: implement DateTime return value method
-    fn timestamp(&self) -> PyResult<i64> {
-       return Ok(self.timestamp_ms);
-    }
-
-    fn make_order(&self, side: &str, price: f32, volume: f32, duration: i32) -> PyResult<String> {
-        println!(
-            "make order of side{} price={} vol={} duration={}",
-            side, price, volume, duration
-        );
-
-        return Ok("order id string(maybe guid)".to_string());
-    }
-
-    /*
-    #[getter]
-    fn get_history(&mut self) -> PyResult<PyDataFrame> {
-        // TODO: retum must by numpy object
-        let data_frame = self.market.df();
-
-        let py_frame = PyDataFrame::new(data_frame);
-
-        return Ok(py_frame);
-    }
-    */
-
-    #[getter]
-    fn get_balance(&self) -> PyResult<f64> {
-        return Ok(self.balance);
-    }
-
-    #[setter]
-    fn set_balance(&mut self, balance: f64) {
-        self.balance = balance;
-    }
-
-    /*
-    #[getter]
-    fn get_position(&self) -> PyResult<String> {
-        // TODO: retum must by numpy object
-
-        return Ok("numpy object ".to_string());
-    }
-    */
-
-    fn run(&self, m: &PyModule) -> PyResult<String> {
-        // TODO: retum must by numpy object
-
-        return Ok("numpy object ".to_string());
-    }
-
-    #[getter]
-    fn reslut(&self) -> PyResult<String> {
-        // TODO: retum must by numpy object
-
-        return Ok("numpy object ".to_string());
-    }
-}
-*/
-
-
-/// Formats the sum of two numbers as string.
-#[pyfunction]
-fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-    Ok((a + b).to_string())
-}
-
-/// A Python module implemented in Rust.
-#[pymodule]
-fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
-    m.add_class::<DummyBb>()?;
-    m.add_class::<PyTest>()?;
-
-    Ok(())
-}
+///------------------------------------------------------------------------
+/// TEST SECION
+///------------------------------------------------------------------------
 
 #[test]
 fn test_plugin_all() {
@@ -282,22 +185,6 @@ fn test_plugin_all() {
     */
 }
 
-#[pyclass]
-#[repr(transparent)]
-#[derive(Clone)]
-struct PyTest {
-    moji: String,
-}
-
-#[pymethods]
-impl PyTest {
-    #[new]
-    pub fn new() -> Self {
-        return PyTest {
-            moji: "abdedfg".to_string(),
-        };
-    }
-}
 
 use numpy::array;
 use numpy::PyArray1;
@@ -317,27 +204,7 @@ fn test_convert_pynumpy() {
     assert!(py_array.resize(100).is_err()); // You can't resize owned-by-rust array.
 }
 
-#[test]
-fn test_downcast() {
-    Python::with_gil(|py| {
-        let rbot = py.import("rbot").unwrap();
-
-        let df_any = rbot.call_method0("PyTest").unwrap();
-        // let df_any = polars.call_method1("DataFrame", ([1,1])).unwrap();
-
-        println!("{}", df_any);
-        println!("{}", df_any.get_type().name().unwrap());
-
-        let item: PyTest = df_any.extract().unwrap();
-
-        println!("{}", item.moji);
-
-        // let t: PyTest = df_any.extract().unwrap();
-    });
-}
-
 use pyo3::types::PyTuple;
-
 
 #[test]
 fn test_market_call() {

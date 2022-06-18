@@ -277,6 +277,18 @@ impl MarketInfo for Market {
 
 }
 
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+///    TEST SECION
+////////////////////////////////////////////////////////////////////////////////
+
+
 #[test]
 fn test_history_size_and_dupe_load() {
     let mut market = Market::new();
@@ -363,7 +375,7 @@ fn test_make_history() {
     assert_eq!(market.history_size(), 3_000_000);
 
     assert_eq!(market.start_time(), 0);
-    assert_eq!(market.end_time(), 2_999_999*1_000_000);    
+    assert_eq!(market.end_time(), 2_999_999*1_000);   // time is in msec 
 }
 
 #[test]
