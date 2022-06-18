@@ -6,6 +6,8 @@ use crate::exchange::MarketInfo;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
+use super::BUY;
+
 // Status life cycle
 //   "CREATED" -> "CLOSE" or "CANCEL"
 
@@ -16,7 +18,27 @@ pub struct Order {
     price: f64,
     size: f64, // in USD
     taker: bool,        // takerの場合true, falseの場合はmakerとなる。
-    _partial_work: f64,
+    _partial_work: f64, // 約定したかず。０になったら全部約定。イベントは０の全部約定時のみ発生。
+}
+
+impl Order {
+    fn new(order_id: String, // YYYY-MM-DD-SEQ
+           create_time: i64, // in ms
+           valid_until: i64, // in ms
+           price: f64,
+            size: f64, // in USD
+            taker: bool) -> Self{
+                return Order{
+                    order_id: order_id,
+                    create_time: create_time,
+                    valid_until: valid_until,
+                    price: price,
+                    size: size,
+                    taker: taker,
+                    _partial_work: size
+                };
+    } 
+
 }
 
 pub struct ClosedOrder {
@@ -32,16 +54,14 @@ pub struct ClosedOrder {
 
 pub struct Position {
     price: f64,
-    value: f64,  // in BTC
-    margin: f64, // in USD
+    size: f64,  // in BTC
 }
 
 impl Position {
     fn new() -> Self {
         return Position {
             price: 0.0,
-            value: 0.0,
-            margin: 0.0,
+            size: 0.0,
         };
     }
 }
@@ -97,6 +117,7 @@ pub struct SessionValue {
 
 impl SessionValue {
     ///　ログイベントを処理してセッション情報を更新する。
+    ///  0. Tick更新イベントを発生させる。
     ///  1. 時刻のUpdate
     ///  ２。マーク価格の更新
     /// 　2. オーダ中のオーダーを更新する。
@@ -105,11 +126,44 @@ impl SessionValue {
     /// 　オーダー
     ///
     /// データがそろうまではFalseをかえす。ウォーミングアップ完了後Trueへ更新する。
+    /// 
+
+    /* TODO: マージンの計算とFundingRate計算はあとまわし */
     fn exec_event(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) {}
 
+    ///
+    /// price x sizeのオーダを発行できるか確認する。
+    fn check_margin(&self, price: f64, volume: f64) -> bool {
+        const LEVERRAGE: f64 = 1.0;         // TODO: まずはレバレッジ１倍固定から始める。
+        let order_amount = price * volume;
+        
+        order_amount = order_amount / LEVERRAGE;
+
+        return order_amount < self.avairable_balance;
+    }
     /// オーダーをオーダーリストへ追加する。
     /// _partial_workはオーダーした量と同じ値をセットする。
-    fn insert_order(&self, side: &str, price: f64, volume: f64, duration_ms: i64) -> bool {
+    /// オーダーエントリー後は値段と時間でソートする。
+    fn insert_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> bool {
+        let order_id = self.generate_id();
+        let order = Order::new(order_id, self.current_time, self.current_time + duration_ms, price, size, false); 
+
+        match side {
+            BUY => {
+                // check if the order become taker of maker
+
+                // insert order list
+
+                // sort order
+            }
+            SELL => {
+                // check if the order become taker of maker
+            }
+            _ => {
+                println!("Unknown order type {} / use B or S", side);
+            }
+        }
+
         return false;
     }
 }
