@@ -133,36 +133,46 @@ impl Positions {
         return long_margin + short_margin;
     }
 
-    /*
-        /// ClosedOrderによりポジションを更新する。
-        /// Longの場合：
-        ///     Shortポジションがある分は精算。
-        ///     不足分をLongポジションへ積み増し。
-        ///
-        /// Shortの場合：
-        ///     Longポジションがある分は精算
-        ///     不足分をLongポジションへ積み増し。
+    /// ClosedOrderによりポジションを更新する。
+    /// Longの場合：
+    ///     Shortポジションがある分は精算。
+    ///     不足分をLongポジションへ積み増し。
+    ///
+    /// Shortの場合：
+    ///     Longポジションがある分は精算
+    ///     不足分をLongポジションへ積み増し。
+    ///
+    fn update_position(&mut self, order: &mut OrderResult) -> Vec<OrderResult> {
+        match order.order_type {
+            OrderType::Buy => {
+                let pos = self.short_position.close_position(order);
 
-        ///
-        fn update_position(&mut self, order: ClosedOrder) -> ClosedOrder {
-            match order.order_type {
-                OrderType::Buy => {
-                    let pos = self.short_position.close_position(order);
-
-                    match pos.len() {
-                        0 => {},
-                        1 => {},
-                        _ => {},
+                match pos.len() {
+                    0 => { // Open New
+                        return vec![self.long_position.open_position(order)];
                     }
-                },
-                OrderType::Sell => {
-
-                },
-                OrderType::Unknown => {
-
+                    1 => {// Close position
+                        return pos;
+                    }
+                    2 => { // close first order and open new second.
+                        let pos0 = pos[0].clone();
+                        let pos1 = self.long_position.open_position(order);
+                        return vec![pos0, pos1];
+                    }
+                    _ => {
+                        println!("Error in update position");
+                        return vec![];
+                    }
                 }
             }
-    */
+            OrderType::Sell => {
+                return vec![]; // TODO: not implement
+            }
+            OrderType::Unknown => {
+                return vec![]; // TODO: not implment
+            }
+        }
+    }
 }
 
 // TODO: ユーザのオリジナルなインジケータを保存できるようにする。
@@ -365,13 +375,59 @@ impl Session for SessionValue {
 /// TEST SECTION
 /// ------------------------------------------------------------------------------------
 
+
+#[cfg(test)]
+fn test_build_orders() -> Vec<OrderResult> {
+    use serde::ser::SerializeMap;
+
+    let sell_order01 = Order::new(
+        1,
+        "neworder".to_string(),
+        OrderType::Sell,
+        100,
+        200.0,
+        200.0,
+        false,
+    );
+
+    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::CloseOrder);
+    
+    let mut sell_close02 = sell_close01.clone();
+    sell_close02.order_id = "aa".to_string();
+    let sell_close03 = sell_close01.clone();
+    let sell_close04 = sell_close01.clone();
+    let sell_close05 = sell_close01.clone();                        
+
+    let buy_order = Order::new(
+        1,
+        "buyorder".to_string(),
+        OrderType::Buy,
+        100,
+        50.0,
+        100.0,
+        false,
+    );
+    let buy_close01 = OrderResult::from_order(2, &buy_order, OrderStatus::CloseOrder);
+
+    let buy_close02 = buy_close01.clone();
+    let buy_close03 = buy_close01.clone();
+    let buy_close04 = buy_close01.clone();
+    let buy_close05 = buy_close01.clone();                        
+
+    return vec![
+        sell_close01, sell_close02,  sell_close03,  sell_close04, sell_close05,                                     
+        buy_close01,  buy_close02,   buy_close03,  buy_close04, buy_close05, ];
+}
+
+
 #[cfg(test)]
 mod TestPosition {
     use super::*;
-    #[test]
-    fn test_update_position() {
-        let mut position = Position::new();
 
+
+    #[test]
+    pub fn test_update_position() {
+        let mut position = Position::new();
 
         let sell_order = Order::new(
             1,
@@ -395,11 +451,9 @@ mod TestPosition {
         );
         let mut sell_close2 = OrderResult::from_order(2, &sell_order2, OrderStatus::CloseOrder);
 
-
         // ポジションがないときはなにもしないテスト
         let result = position.close_position(&mut sell_close);
         assert_eq!(result.len(), 0);
-
 
         let buy_order = Order::new(
             1,
@@ -449,6 +503,26 @@ mod TestPositions {
         session.short_position.price = 100.0;
         session.short_position.size = 200.0; // 2.0 vol * -100 = -200
         assert_eq!(session.get_margin(200.0), -50.0 + (-200.0));
+    }
+
+    #[test]
+    fn test_update_position() {
+        // 新規だった場合はOpenOrderを返す。
+        // クローズだった場合はCLoseOrderを返す。
+        // クローズしきれなかった場合は、OpenとCloseを返す。
+        // LongとShortをオーダーの中身を見て判断する。
+
+
+
+
+
+
+
+
+
+
+
+
     }
 }
 

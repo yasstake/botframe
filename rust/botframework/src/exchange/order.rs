@@ -101,7 +101,7 @@ impl OrderResult {
 // Status life cycle
 //   "CREATED" -> "CLOSE" or "CANCEL"
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Order {
     pub create_time: i64, // in ms
     pub order_id: String, // YYYY-MM-DD-SEQ
