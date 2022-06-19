@@ -1,210 +1,16 @@
 use smartcore::linalg::high_order;
 
+use std::collections::VecDeque;
+
+
 use crate::exchange::Market;
 use crate::exchange::MarketInfo;
 
-use std::collections::VecDeque;
-use std::rc::Rc;
+use crate::exchange::order::Order;
+use crate::exchange::order::OrderStatus;
+use crate::exchange::order::OrderType;
 
-
-pub enum OrderStatus {
-    NoProcess,
-    Enqueue,
-    OrderComplete,
-    OrderExpire,
-    Liquidation,
-    NoMoney,
-}
-
-impl OrderStatus {
-    fn to_str(&self) -> &str {
-        match self {
-            FailOrder => {return &"Fail"}
-            Enqueue => {return &"Enqueue"},
-            OrderComplete => {return &"Complete"},
-            OrderExpire => {return &"Expire"},
-            Liquidation => {return &"Liquidation"},
-            NoMoney => {return &"NoMoney"},
-            _ => {return "Unknown"}            
-        }        
-    }
-}
-
-pub struct ClosedOrder {
-    timestamp: i64,
-    order_id: String,
-    create_time: f64,
-    status: OrderStatus,
-    price: f64,
-    sell_size: f64, // in usd
-    buy_size: f64,  // in usd
-    profit: f64,
-    fee: f64,
-    total_profit: f64,
-}
-
-impl ClosedOrder {
-    /*
-    fn from_order(timestamp i64, order: &Order, status: OrderStatus, ) -> Self {
-        return ClosedOrder 
-        { 
-            timestamp: timestamp,
-            order_id: order.order_id,
-            create_time: order.create_time,
-            status: status,
-            price: order.price,
-            sell_size: (),
-            buy_size: (),
-                  fee: (),
-                   total: () 
-                }
-    }
-    */
-}
-
-// Status life cycle
-//   "CREATED" -> "CLOSE" or "CANCEL"
-
-#[derive(Debug)]
-pub struct Order {
-    order_id: String, // YYYY-MM-DD-SEQ
-    create_time: i64, // in ms
-    valid_until: i64, // in ms
-    price: f64,
-    size: f64,          // in USD
-    taker: bool,        // takerの場合true, falseの場合はmakerとなる。
-    _partial_work: f64, // 約定したかず。０になったら全部約定。イベントは０の全部約定時のみ発生。
-}
-
-impl Order {
-    fn new(
-        order_id: String, // YYYY-MM-DD-SEQ
-        create_time: i64, // in ms
-        valid_until: i64, // in ms
-        price: f64,
-        size: f64, // in USD
-        taker: bool,
-    ) -> Self {
-        return Order {
-            order_id: order_id,
-            create_time: create_time,
-            valid_until: valid_until,
-            price: price,
-            size: size,
-            taker: taker,
-            _partial_work: size,
-        };
-    }
-}
-
-/// 未実現オーダーリストを整理する。
-/// ・　オーダーの追加
-/// ・　オーダの削除（あとで実装）
-/// ・　オーダー中のマージン計算
-/// ・　オーダーのExpire
-/// ・　オーダーの約定
-pub struct Orders {
-    buy_order: bool,
-    q: Vec<Order>,
-}
-
-use std::cmp::Ordering;
-
-impl Orders {
-    fn new(buy_order: bool) -> Self {
-        return Orders {
-            buy_order: buy_order,
-            q: vec![],
-        };
-    }
-
-    fn push(&mut self, order: Order) {
-        self.q.push(order);
-        self.sort();
-    }
-
-    fn margin(&mut self) -> f64 {
-        let mut m: f64 = 0.0;
-
-        for order in &self.q {
-            m += order.size;
-        }
-
-        return m;
-    }
-
-    // Sellオーダーを約定しやすい順番に整列させる
-    //   *やすい順番
-    //   早い順番
-    fn sell_comp(a: &Order, b: &Order) -> Ordering {
-        if a.price < b.price {
-            return Ordering::Less;
-        } else if a.price > b.price {
-            return Ordering::Greater;
-        } else if a.create_time < b.create_time {
-            return Ordering::Less;
-        }
-        return Ordering::Equal;
-    }
-
-    // buyオーダーを約定しやすい順番に整列させる
-    //   *高い順番
-    //   早い順番
-    fn buy_comp(a: &Order, b: &Order) -> Ordering {
-        if a.price < b.price {
-            return Ordering::Greater;
-        } else if a.price > b.price {
-            return Ordering::Less;
-        } else if a.create_time < b.create_time {
-            return Ordering::Less;
-        }
-        return Ordering::Equal;
-    }
-
-    fn sort(&mut self) {
-        if self.buy_order {
-            // 高い方・古い方から並べる
-            self.q.sort_by(Orders::buy_comp);
-        } else {
-            // 安い方・古い方から並べる
-            self.q.sort_by(Orders::sell_comp);
-        }
-    }
-
-    /// Queueの中にオーダがはいっているかを確認する。
-    fn has_q(&self) -> bool {
-        return self.q.is_empty() == false;
-    }
-
-    ///　全件なめる処理になるので数秒ごとに１回でOKとする。
-    /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
-    fn expire(&mut self, current_time: i64) -> Result<ClosedOrder, OrderStatus> {
-        let l = self.q.len();
-
-        for i in 0..l {
-            if self.q[i].valid_until < current_time {
-                self.q.remove(i);
-
-                
-            }
-        }
-
-        return Err(OrderStatus::NoProcess);
-    }
-
-    /// 約定履歴からオーダーを処理する。
-    /// 優先度の高いほうから１つづつ処理することとし、先頭のオーダ一つが約定したらリターンする。
-    /// うまくいった場合はClosedOrderを返す（ほとんどの場合はErrを返す）
-    fn execute(&mut self, time_ms: i64, action: &str, price: f64, size: f64) -> Result<ClosedOrder, OrderStatus> {
-        /*
-        if len(sefl.q) {
-            return Err("");
-        }
-        */
-
-        return Err(OrderStatus::NoProcess);
-     }
-}
+use crate::exchange::order::ClosedOrder;
 
 
 pub struct Position {
@@ -410,7 +216,6 @@ pub trait Agent {
     fn on_order(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64);
 }
 
-
 pub trait Session {
     fn get_timestamp_ms(&self) -> i64;
     fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> OrderStatus;
@@ -456,76 +261,34 @@ impl Session for SessionValue {
 /// ------------------------------------------------------------------------------------
 
 #[cfg(test)]
-mod TestOrders {
-    use super::*;
-    #[test]
-    fn test_orders() {
-        let mut orders = Orders::new(true);
-        assert_eq!(orders.has_q(), false);
-
-        let o1 = Order::new("low price".to_string(), 1, 2, 100.0, 100.0, false);
-        let o2 = Order::new("low price but later".to_string(), 3, 2, 100.0, 50.0, false);
-        let o3 = Order::new("high price".to_string(), 2, 2, 200.0, 200.0, false);
-        let o4 = Order::new("high price but first".to_string(), 1, 2, 200.0, 50.0, false);
-
-        orders.push(o1);
-        assert_eq!(orders.has_q(), true);        
-        orders.push(o2);
-        orders.push(o3);
-        orders.push(o4);
-
-        assert_eq!(orders.margin(), 400.0);
-
-        assert_eq!(orders.q[0].price, 200.0);
-        assert_eq!(orders.q[0].size, 50.0);
-        assert_eq!(orders.q[1].price, 200.0);
-        assert_eq!(orders.q[1].size, 200.0);
-        assert_eq!(orders.q[2].price, 100.0);
-        assert_eq!(orders.q[2].size, 100.0);
-        assert_eq!(orders.q[3].price, 100.0);
-        assert_eq!(orders.q[3].size, 50.0);
-        println!("{:?}", orders.q);
-
-        // Sell Order
-        let mut orders = Orders::new(false);
-
-        let o1 = Order::new("low price".to_string(), 1, 2, 100.0, 100.0, false);
-        let o2 = Order::new("low price but later".to_string(), 3, 2, 100.0, 50.0, false);
-        let o3 = Order::new("high price".to_string(), 2, 2, 200.0, 200.0, false);
-        let o4 = Order::new("high price but first".to_string(), 1, 2, 200.0, 50.0, false);
-
-        orders.push(o1);
-        orders.push(o2);
-        orders.push(o3);
-        orders.push(o4);
-
-        assert_eq!(orders.margin(), 400.0);
-
-        assert_eq!(orders.q[2].price, 200.0);
-        assert_eq!(orders.q[2].size, 50.0);
-        assert_eq!(orders.q[3].price, 200.0);
-        assert_eq!(orders.q[3].size, 200.0);
-        assert_eq!(orders.q[0].price, 100.0);
-        assert_eq!(orders.q[0].size, 100.0);
-        assert_eq!(orders.q[1].price, 100.0);
-        assert_eq!(orders.q[1].size, 50.0);
-        println!("{:?}", orders.q);
-    }
-}
-
-#[cfg(test)]
 mod TestPosition {
     use super::*;
     #[test]
     fn test_update_position() {
         let mut position = Position::new();
 
-        let order = Order::new("neworder".to_string(), 1, 100, 100.0, 200.0, false);
+        let order = Order::new(
+            1,
+            "neworder".to_string(),
+            OrderType::Sell,
+            100,
+            100.0,
+            200.0,
+            false,
+        );
         position.update_position(order);
         assert_eq!(position.price, 100.0);
         assert_eq!(position.size, 200.0);
 
-        let order = Order::new("neworder".to_string(), 1, 100, 200.0, 100.0, false);
+        let order = Order::new(
+            1,
+            "neworder".to_string(),
+            OrderType::Buy,
+            100,
+            200.0,
+            100.0,
+            false,
+        );
         position.update_position(order);
         assert_eq!(position.price, 300.0 / 2.5);
         assert_eq!(position.size, 300.0);
