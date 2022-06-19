@@ -7,17 +7,20 @@ use polars::prelude::NamedFrom;
 use polars::prelude::Series;
 use polars::prelude::SortOptions;
 
-pub const BUY: &str = "B";
-pub const SELL: &str = "S";
+// pub const BUY: &str = "B";
+// pub const SELL: &str = "S";
 
 pub mod session;
+pub mod order;
+
+use order::OrderType;
 
 #[derive(Debug)]
 pub struct Trade {
     pub time_ns: i64,
     pub price: f64,
     pub size: f64,
-    pub bs: String,
+    pub bs: String,         // 本来はOrderTypeで実装するべきだが、Porlarsへいれるため汎用形のStringを採用。
     pub id: String,
 }
 
@@ -298,7 +301,7 @@ fn test_history_size_and_dupe_load() {
             time_ns: 10000 * i,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -316,7 +319,7 @@ fn test_history_size_and_dupe_load() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -343,7 +346,7 @@ fn test_add_trad_and_flush() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -361,7 +364,7 @@ fn test_make_history() {
             time_ns: i * 1_000_000,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -387,7 +390,7 @@ fn test_df_select() {
             time_ns: i * 1_000_000,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -460,7 +463,7 @@ fn test_add_trade() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 
@@ -479,7 +482,7 @@ fn test_to_data_frame() {
             time_ns: i * 100,
             price: 1.0,
             size: 1.1,
-            bs: BUY.to_string(),
+            bs: OrderType::Buy.to_str().to_string(),
             id: "asdfasf".to_string(),
         };
 

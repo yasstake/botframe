@@ -6,7 +6,61 @@ use crate::exchange::MarketInfo;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use super::BUY;
+
+pub enum OrderStatus {
+    NoProcess,
+    Enqueue,
+    OrderComplete,
+    OrderExpire,
+    Liquidation,
+    NoMoney,
+}
+
+impl OrderStatus {
+    fn to_str(&self) -> &str {
+        match self {
+            FailOrder => {return &"Fail"}
+            Enqueue => {return &"Enqueue"},
+            OrderComplete => {return &"Complete"},
+            OrderExpire => {return &"Expire"},
+            Liquidation => {return &"Liquidation"},
+            NoMoney => {return &"NoMoney"},
+            _ => {return "Unknown"}            
+        }        
+    }
+}
+
+pub struct ClosedOrder {
+    timestamp: i64,
+    order_id: String,
+    create_time: f64,
+    status: OrderStatus,
+    price: f64,
+    sell_size: f64, // in usd
+    buy_size: f64,  // in usd
+    profit: f64,
+    fee: f64,
+    total_profit: f64,
+}
+
+impl ClosedOrder {
+    /*
+    fn from_order(timestamp i64, order: &Order, status: OrderStatus, ) -> Self {
+        return ClosedOrder 
+        { 
+            timestamp: timestamp,
+            order_id: order.order_id,
+            create_time: order.create_time,
+            status: status,
+            price: order.price,
+            sell_size: (),
+            buy_size: (),
+                  fee: (),
+                   total: () 
+                }
+    }
+    */
+}
 
 // Status life cycle
 //   "CREATED" -> "CLOSE" or "CANCEL"
@@ -117,20 +171,41 @@ impl Orders {
         }
     }
 
-    // TODO: not implemented
-    fn execute(&mut self, time_ms: i64, action: &str, price: f64, size: f64) {}
+    /// Queueの中にオーダがはいっているかを確認する。
+    fn has_q(&self) -> bool {
+        return self.q.is_empty() == false;
+    }
+
+    ///　全件なめる処理になるので数秒ごとに１回でOKとする。
+    /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
+    fn expire(&mut self, current_time: i64) -> Result<ClosedOrder, OrderStatus> {
+        let l = self.q.len();
+
+        for i in 0..l {
+            if self.q[i].valid_until < current_time {
+                self.q.remove(i);
+
+                
+            }
+        }
+
+        return Err(OrderStatus::NoProcess);
+    }
+
+    /// 約定履歴からオーダーを処理する。
+    /// 優先度の高いほうから１つづつ処理することとし、先頭のオーダ一つが約定したらリターンする。
+    /// うまくいった場合はClosedOrderを返す（ほとんどの場合はErrを返す）
+    fn execute(&mut self, time_ms: i64, action: &str, price: f64, size: f64) -> Result<ClosedOrder, OrderStatus> {
+        /*
+        if len(sefl.q) {
+            return Err("");
+        }
+        */
+
+        return Err(OrderStatus::NoProcess);
+     }
 }
 
-pub struct ClosedOrder {
-    order_id: String,
-    create_time: f64,
-    status: String,
-    price: f64,
-    sell_size: f64, // in usd
-    buy_size: f64,  // in usd
-    fee: f64,
-    total: f64,
-}
 
 pub struct Position {
     price: f64,
@@ -335,18 +410,10 @@ pub trait Agent {
     fn on_order(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64);
 }
 
-pub enum SessionEvent {
-    None,
-    Enqueue,
-    OrderComplete,
-    OrderExpire,
-    Liquidation,
-    NoMoney,
-}
 
 pub trait Session {
     fn get_timestamp_ms(&self) -> i64;
-    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> SessionEvent;
+    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> OrderStatus;
     /*
     fn get_active_orders(&self) -> [Order];
     fn get_posision(&self) -> (Position, Position); // long/short
@@ -366,8 +433,8 @@ impl Session for SessionValue {
         return self.current_time;
     }
 
-    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> SessionEvent {
-        return SessionEvent::NoMoney;
+    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> OrderStatus {
+        return OrderStatus::NoMoney;
     }
 
     /*
@@ -394,6 +461,7 @@ mod TestOrders {
     #[test]
     fn test_orders() {
         let mut orders = Orders::new(true);
+        assert_eq!(orders.has_q(), false);
 
         let o1 = Order::new("low price".to_string(), 1, 2, 100.0, 100.0, false);
         let o2 = Order::new("low price but later".to_string(), 3, 2, 100.0, 50.0, false);
@@ -401,6 +469,7 @@ mod TestOrders {
         let o4 = Order::new("high price but first".to_string(), 1, 2, 200.0, 50.0, false);
 
         orders.push(o1);
+        assert_eq!(orders.has_q(), true);        
         orders.push(o2);
         orders.push(o3);
         orders.push(o4);

@@ -45,7 +45,7 @@ struct ParseError {
 }
 
 use crate::exchange::Trade;
-use crate::exchange::{BUY, SELL};
+use crate::exchange::order::OrderType;
 
 //------------------------------------------------------------------------
 // Parse log file
@@ -98,11 +98,7 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
             1 => { /* symbol IGNORE */ }
             2 => {
                 /* side */
-                match col {
-                    "Buy" => bs = BUY.to_string(),
-                    "Sell" => bs = SELL.to_string(),
-                    _ => return Err(anyhow!("log record error {} {}", col, rec)),
-                }
+                bs = OrderType::from_str(col).to_str().to_string();
             }
             3 => {
                 /* size */
