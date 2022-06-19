@@ -2,7 +2,6 @@ use smartcore::linalg::high_order;
 
 use std::collections::VecDeque;
 
-
 use crate::exchange::Market;
 use crate::exchange::MarketInfo;
 
@@ -10,9 +9,9 @@ use crate::exchange::order::Order;
 use crate::exchange::order::OrderStatus;
 use crate::exchange::order::OrderType;
 
-use crate::exchange::order::ClosedOrder;
+use crate::exchange::order::OrderResult;
 
-
+#[derive(Debug)]
 pub struct Position {
     price: f64,
     size: f64, // in BTC
@@ -26,6 +25,63 @@ impl Position {
         };
     }
 
+    fn close_position(&mut self, order: &mut OrderResult) -> Vec<OrderResult> {
+        if self.size == 0.0 {
+            // なにもしない。
+            return vec![];
+        } else if order.size < self.size {
+            // 全部クローズ
+            self.simple_close_position(order);
+
+            return vec![order.clone()];
+        } else {
+            let mut orders: Vec<OrderResult> = order.split_child(order.size);
+
+            self.simple_close_position(&mut orders[0]);
+            self.price = 0.0;
+            self.size = 0.0;
+            // 一部クローズ
+            return orders;
+        }
+    }
+
+    fn simple_close_position(&mut self, order: &mut OrderResult) {
+        order.status = OrderStatus::CloseOrder;
+        self.size -= order.size;
+    }
+
+    fn update_open_price(&mut self, price: f64, size: f64) {
+        if self.size == 0.0 {
+            self.price = price;
+            self.size = size;
+        } else {
+            let new_size = self.size + size;
+            let notion = self.size / self.price + size / price;
+            self.price = new_size / notion;
+            self.size = new_size;
+            println!("notion={} new_size={}", notion, new_size);
+        }
+    }
+
+    fn open_position(&mut self, order: &mut OrderResult) -> OrderResult {
+        order.status = OrderStatus::OpenOrder;
+
+        if self.size == 0.0 {
+            self.price = order.price;
+            self.size = order.size;
+        } else {
+            let new_size = self.size + order.size;
+            let notion = self.size / self.price + order.size / order.price;
+            self.price = new_size / notion;
+            self.size = new_size;
+            println!("notion={} new_size={}", notion, new_size);
+        }
+
+        return order.clone();
+    }
+}
+
+/*
     fn update_position(&mut self, order: Order) {
         if self.size == 0.0 {
             self.price = order.price;
@@ -40,6 +96,73 @@ impl Position {
             println!("notion={} new_size={}", notion, new_size);
         }
     }
+*/
+
+pub struct Positions {
+    long_position: Position,
+    short_position: Position,
+}
+
+impl Positions {
+    fn new() -> Self {
+        return Positions {
+            long_position: Position::new(),
+            short_position: Position::new(),
+        };
+    }
+
+    fn long_volume(&self) -> f64 {
+        return (self.long_position.size / self.long_position.price); // 購入数量
+    }
+
+    fn short_volume(&self) -> f64 {
+        return (self.short_position.size / self.short_position.price); // 購入数量
+    }
+
+    fn get_margin(&self, center_price: f64) -> f64 {
+        let long_margin = (center_price - self.long_position.price)     // 購入単価 - 現在単価
+             * self.long_volume();
+
+        println!("long_margin={}", long_margin);
+
+        let short_margin = (self.short_position.price - center_price)    // 購入単価 - 現在単価
+            * self.short_volume();
+
+        println!("short_margin={}", short_margin);
+
+        return long_margin + short_margin;
+    }
+
+    /*
+        /// ClosedOrderによりポジションを更新する。
+        /// Longの場合：
+        ///     Shortポジションがある分は精算。
+        ///     不足分をLongポジションへ積み増し。
+        ///
+        /// Shortの場合：
+        ///     Longポジションがある分は精算
+        ///     不足分をLongポジションへ積み増し。
+
+        ///
+        fn update_position(&mut self, order: ClosedOrder) -> ClosedOrder {
+            match order.order_type {
+                OrderType::Buy => {
+                    let pos = self.short_position.close_position(order);
+
+                    match pos.len() {
+                        0 => {},
+                        1 => {},
+                        _ => {},
+                    }
+                },
+                OrderType::Sell => {
+
+                },
+                OrderType::Unknown => {
+
+                }
+            }
+    */
 }
 
 // TODO: ユーザのオリジナルなインジケータを保存できるようにする。
@@ -81,9 +204,8 @@ pub struct SessionValue {
     current_time: i64,
     long_orders: Vec<Order>,
     shot_orders: Vec<Order>,
-    order_history: Vec<ClosedOrder>,
-    long_position: Position,
-    short_position: Position,
+    positions: Positions,
+    order_history: Vec<OrderResult>,
     indicators: Vec<Indicator>,
     wallet_balance: f64, // 入金額
 }
@@ -99,9 +221,8 @@ impl SessionValue {
             current_time: 0,
             long_orders: vec![],
             shot_orders: vec![],
+            positions: Positions::new(),
             order_history: vec![],
-            long_position: Position::new(),
-            short_position: Position::new(),
             indicators: vec![],
             wallet_balance: 0.0,
         };
@@ -127,23 +248,7 @@ impl SessionValue {
         return (self.last_buy_price + self.last_sell_price) / 2.0;
     }
 
-    fn get_position_margin(&self) -> f64 {
-        let center_price = self.get_center_price();
-
-        let long_margin = (center_price - self.long_position.price)                       // 購入単価 - 現在単価
-            * (self.long_position.size / self.long_position.price); // 購入数量
-
-        println!("long_margin={}", long_margin);
-
-        let short_margin = (self.short_position.price - center_price)                    // 購入単価 - 現在単価
-            * (self.short_position.size / self.short_position.price); // 購入数量
-
-        println!("short_margin={}", short_margin);
-
-        return long_margin + short_margin;
-    }
-
-    fn insert_long_position(order: Order) {}
+    fn insert_long_position(order: OrderResult) {}
 
     fn insert_short_position(order: Order) {}
 
@@ -267,7 +372,8 @@ mod TestPosition {
     fn test_update_position() {
         let mut position = Position::new();
 
-        let order = Order::new(
+
+        let sell_order = Order::new(
             1,
             "neworder".to_string(),
             OrderType::Sell,
@@ -276,22 +382,73 @@ mod TestPosition {
             200.0,
             false,
         );
-        position.update_position(order);
-        assert_eq!(position.price, 100.0);
-        assert_eq!(position.size, 200.0);
+        let mut sell_close = OrderResult::from_order(1, &sell_order, OrderStatus::CloseOrder);
 
-        let order = Order::new(
+        let sell_order2 = Order::new(
             1,
             "neworder".to_string(),
-            OrderType::Buy,
+            OrderType::Sell,
             100,
             200.0,
+            200.0,
+            false,
+        );
+        let mut sell_close2 = OrderResult::from_order(2, &sell_order2, OrderStatus::CloseOrder);
+
+
+        // ポジションがないときはなにもしないテスト
+        let result = position.close_position(&mut sell_close);
+        assert_eq!(result.len(), 0);
+
+
+        let buy_order = Order::new(
+            1,
+            "buyorder".to_string(),
+            OrderType::Buy,
+            100,
+            50.0,
             100.0,
             false,
         );
-        position.update_position(order);
-        assert_eq!(position.price, 300.0 / 2.5);
-        assert_eq!(position.size, 300.0);
+        let mut buy_close = OrderResult::from_order(2, &buy_order, OrderStatus::CloseOrder);
+
+        let result = position.close_position(&mut buy_close);
+        assert_eq!(result.len(), 0);
+
+        // ポジションを作る。
+        let r = position.open_position(&mut sell_close);
+        println!("{:?}  {:?}", position, r);
+
+        let r = position.open_position(&mut sell_close2);
+        println!("{:?} {:?}", position, r);
+
+        let result = position.close_position(&mut buy_close);
+        println!("{:?}", position);
+        assert_eq!(result.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod TestPositions {
+    use super::*;
+
+    #[test]
+    fn test_margin() {
+        let mut session = Positions::new();
+
+        // test margin
+        session.long_position.price = 100.0;
+        session.long_position.size = 100.0;
+        session.short_position.price = 200.0;
+        session.short_position.size = 200.0;
+        assert_eq!(session.get_margin(100.25), 0.25 + 99.75);
+
+        // test margin
+        session.long_position.price = 400.0;
+        session.long_position.size = 100.0; // 0.25 vol  * -200 = -50
+        session.short_position.price = 100.0;
+        session.short_position.size = 200.0; // 2.0 vol * -100 = -200
+        assert_eq!(session.get_margin(200.0), -50.0 + (-200.0));
     }
 }
 
@@ -320,23 +477,9 @@ mod TestSessionValue {
         session.last_sell_price = 100.5;
         assert_eq!(session.get_center_price(), 100.25);
 
-        // test margin
-        session.long_position.price = 100.0;
-        session.long_position.size = 100.0;
-        session.short_position.price = 200.0;
-        session.short_position.size = 200.0;
-        assert_eq!(session.get_position_margin(), 0.25 + 99.75);
-
         // test center price
         session.last_buy_price = 200.0;
         session.last_sell_price = 200.0;
         assert_eq!(session.get_center_price(), 200.0);
-
-        // test margin
-        session.long_position.price = 400.0;
-        session.long_position.size = 100.0;
-        session.short_position.price = 100.0;
-        session.short_position.size = 200.0;
-        assert_eq!(session.get_position_margin(), -50.0 + (-200.0));
     }
 }
