@@ -91,22 +91,30 @@ impl OrderResult {
         };
     }
 
+    fn update_volume_with_open_price(&mut self) {
+        self.volume = self.size / self.open_price; // まだ約定されていないはずなのでOpenPrice採用
+    }
+
     /// オーダーを指定された大きさで２つに分ける。
+    /// 一つはSelf, もう一つはCloneされたChild Order
     /// 子供のオーダについては、sub_idが１インクリメントする。
-    /// 分けられない場合は空のリストが返る。
-    pub fn split_child(&self, size: f64) -> Result<Vec<OrderResult>, OrderStatus> {
+    /// 分けられない場合(境界が大きすぎる） NoActionが返る。
+    pub fn split_child(&mut self, size: f64) -> Result<OrderResult, OrderStatus> {
         if self.size < size {     // do nothing.
             return Err(OrderStatus::NoAction);
         }
 
-        let mut parent = self.clone();
         let mut child = self.clone();
 
-        child.size = size;
-        child.order_sub_id = parent.order_sub_id + 1;
-        parent.size -= size;        
+        child.order_sub_id = self.order_sub_id + 1;
+        child.size = self.size - size;
+        child.update_volume_with_open_price();
+        
+        self.size = size;
+        self.volume = self.size / self.volume;
+        self.update_volume_with_open_price();
 
-        return Ok(vec![parent, child]);
+        return Ok(child);
     }
 }
 
@@ -368,16 +376,19 @@ mod ClosedOrderTest{
 
     #[test] 
     fn test_ClosedOrder (){
+        // 101を51(指定サイズ:Self側）と51（新規）に分割するテスト
         let order = Order::new(1, "close".to_string(), 
-        OrderType::Buy, true, 100, 100.1, 100.1, false);
+        OrderType::Buy, true, 100, 100.1, 101.0, false);
 
-        let close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
+        let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
+        assert_eq!(close_order.size, 101.0);
 
-        let orders = close_order.split_child(50.0).unwrap();
-
-        println!("{:?}", orders[0]);
-        println!("{:?}", orders[1]);
-        assert_eq!(orders[0].order_sub_id + 1, orders[1].order_sub_id);
+        println!("{:?}", close_order);
+        let result = &close_order.split_child(50.0).unwrap();
+        assert_eq!(close_order.size, 50.0);
+        assert_eq!(result.size, 51.0);        
+        println!("{:?}", close_order);
+        println!("{:?}", result);
     }
 }
 

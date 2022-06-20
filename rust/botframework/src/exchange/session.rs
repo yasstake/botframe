@@ -53,11 +53,14 @@ impl Position {
         if self.size == 0.0 {
             // ポジションがない場合なにもしない。
             self.price = 0.0;  // 念の為（誤差解消のためポジション０のときはリセット）
+            println!("Nocation");            
             return Err(OrderStatus::NoAction);
         } else if self.size < order.size {
             // ポジション以上にクローズしようとした場合なにもしない（別途分割してクローズする）
+            println!("OverPosition");
             return Err(OrderStatus::OverPosition);
         }
+        println!("Normal Close");                    
         // オーダの全部クローズ（ポジションは残る）
         order.status = OrderStatus::CloseOrder;
         order.close_price = order.open_price;
@@ -480,7 +483,7 @@ fn test_build_orders() -> Vec<OrderResult> {
         false,
     );
 
-    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::CloseOrder);
+    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::Enqueue);
 
     let mut sell_close02 = sell_close01.clone();
     sell_close02.order_id = "aa".to_string();
@@ -498,7 +501,7 @@ fn test_build_orders() -> Vec<OrderResult> {
         100.0,
         false,
     );
-    let buy_close01 = OrderResult::from_order(2, &buy_order, OrderStatus::CloseOrder);
+    let buy_close01 = OrderResult::from_order(2, &buy_order, OrderStatus::Enqueue);
 
     let buy_close02 = buy_close01.clone();
     let buy_close03 = buy_close01.clone();
@@ -550,13 +553,24 @@ mod TestPosition {
         assert_eq!(position.price,  (900.0) / (100.0/50.0 + 200.0/200.0*4.0));
 
         // ポジションのクローズのテスト（小さいオーダーのクローズ
+        println!("-- CLOSE ---");        
         let r = position.close_position(&mut orders[6]);
-        println!("-- CLOSE ---");
         println!("{:?} {:?}", position, orders[6]);
         assert_eq!(position.size,  200.0 * 4.0 + 100.0 - 100.0);                // 数は減る
         assert_eq!(position.price,  (900.0) / (100.0/50.0 + 200.0/200.0*4.0));  // 単価は同じ
 
+        //ポジションクローズのテスト（大きいオーダーのクローズ）
+        println!("-- CLOSE BIG ---");        
+        orders[0].size = 10000.0;
+        println!("{:?} {:?}", position, orders[0]);
+        let r = position.close_position(&mut orders[0]);
 
+        println!("{:?} {:?}", position, orders[0]);
+        assert_eq!(r.err(), Some(OrderStatus::OverPosition));
+
+
+
+        //オーダーの分割テスト
 
     }
 }
