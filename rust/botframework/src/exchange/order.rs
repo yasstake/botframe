@@ -182,8 +182,8 @@ impl Orders {
     }
 
     /// オーダーをキューに入れる。
-    pub fn queue_order(&mut self, order: Order) {
-        self.q.push(order);
+    pub fn queue_order(&mut self, order: &Order) {
+        self.q.push(order.clone());
         self.sort();
     }
 
@@ -242,7 +242,7 @@ impl Orders {
 
     ///　全件なめる処理になるので数秒ごとに１回でOKとする。
     /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
-    pub fn expire(&mut self, current_time_ms: i64) -> Result<OrderResult, OrderStatus> {
+    pub fn expire(&mut self, current_time_ms: i64) -> Result<&OrderResult, OrderStatus> {
         let l = self.q.len();
 
         if l == 0 {
@@ -258,7 +258,7 @@ impl Orders {
                     &order,
                     OrderStatus::ExpireOrder);
 
-                return Ok(close_order);
+                return Ok(&close_order);
             }
         }
 

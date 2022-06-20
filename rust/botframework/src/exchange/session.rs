@@ -275,13 +275,12 @@ impl SessionValue {
     ///  
     fn exec_event_update_time(
         &mut self,
-        session: &dyn MarketInfo,
-        time_ms: i64,
+        current_time_ms: i64,
         action: OrderType,
         price: f64,
         size: f64,
     ) {
-        self.current_time = time_ms;
+        self.current_time = current_time_ms;
 
         //  ２。マーク価格の更新。ログとはエッジが逆になる。
         match action {
@@ -292,23 +291,29 @@ impl SessionValue {
     }
 
     /// オーダの期限切れ処理を行う。
-    // TODO:　ログに追加する。
-    fn exec_event_expire_order(&mut self, current_time_ms: i64) {
+    /// エラーは返すが、エラーが通常のため処理する必要はない。
+    /// OKの場合、上位でログ処理する。
+    fn exec_event_expire_order(&mut self, current_time_ms: i64) -> Result<&OrderResult, OrderStatus> {
+        
+        // ロングの処理
         match self.long_orders.expire(current_time_ms) {
             Ok(result) => {
-                // TODO: add log
-            }
-            _ => { // do nothing(nothing to expire)
+                return Ok(&result);
+            },
+            _ => {
+                // do nothing
             }
         }
-
+        // ショートの処理
         match self.shot_orders.expire(current_time_ms) {
             Ok(result) => {
-                // TODO: add log
-            }
-            _ => { // do nothing(nothing to expire)
+                return Ok(&result);
+            },
+            _ => {
+                // do nothng
             }
         }
+        return Err(OrderStatus::NoAction);                        
     }
 
     //　売りのログのときは、買いオーダーを処理
@@ -320,33 +325,33 @@ impl SessionValue {
         order_type: OrderType,
         price: f64,
         size: f64,
-    ) {
+    )  -> Result<OrderResult, OrderStatus>
+    {
         match order_type {
             OrderType::Buy => {
-                self.long_orders.execute(current_time_ms, price, size);
+                return self.long_orders.execute(current_time_ms, price, size);
             }
             OrderType::Sell => {
-                self.shot_orders.execute(current_time_ms, price, size);
+                return self.shot_orders.execute(current_time_ms, price, size);
             }
-            _ => {}
+            _ => {return Err(OrderStatus::Error)}
         }
     }
 
     /* TODO: マージンの計算とFundingRate計算はあとまわし */
-    fn exec_event(
+    fn main_exec_event(
         &mut self,
-        session: &dyn MarketInfo,
-        time_ms: i64,
-        action: OrderType,
+        current_time_ms: i64,
+        order_type: OrderType,
         price: f64,
         size: f64,
     ) {
-        // Agentへコールバックする。
+        self.exec_event_update_time(current_time_ms, order_type, price, size);
         //  0. AgentへTick更新イベントを発生させる。
         //  1. 時刻のUpdate
 
         //　売り買いの約定が発生していないときは未初期化のためリターン
-        （なにもしない）
+        // （なにもしない）
         if self.last_buy_price == 0.0 || self.last_buy_price == 0.0 {
             return;
         }
@@ -354,54 +359,46 @@ impl SessionValue {
         // 　2. オーダ中のオーダーを更新する。
         // 　　　　　期限切れオーダーを削除する。
         //          毎秒１回実施する（イベントを間引く）
+        //      処理継続        
+        let order_result = self.exec_event_expire_order(current_time_ms); 
 
-        //現在のオーダーから執行可能な量を _partial_workから引き算し０になったらオーダ完了（一部約定はしない想定）
+        //現在のオーダーから執行可能な量を _partial_workから引き算し０になったらオーダ成立（一部約定はしない想定）        
+        //ポジションに追加しする。
+        //　結果がOpen,Closeポジションが行われるのでログに実行結果を追加
+        let order_result = self.exec_event_execute_order(current_time_ms, order_type, price, size);
 
-        //ログに実行結果を追加
+        // ポジションクローズ＋アルファの大きさがある場合のリトライも行う。 
+
     }
 
-    /// オーダーをオーダーリストへ追加する。
-    /// _partial_workはオーダーした量と同じ値をセットする。
-    /// オーダーエントリー後は値段と時間でソートする。
-    ///
-    fn update_position(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> bool {
-        // let order_id = self.generate_id();
-        // let order = Order::new(order_id, self.current_time, self.current_time + duration_ms, price, size, false);
-
-
-
-
+    /// オーダー作りオーダーリストへ追加する。
+    /// 最初にオーダー可能かどうか確認する（余力の有無）
+    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus> {
+        // TODO: 発注可能かチェックする
+        
+        let order_id = self.generate_id();
+        let order = Order::new
+            (self.current_time, order_id, side, true, 
+                self.current_time + duration_ms, price, size, false);
         match side {
-
-
             OrderType::Buy => {
-
-
+                // TODO: Takerになるかどうか確認
+                self.long_orders.queue_order(&order);
+                return 
             },
-               // check if the order become taker of maker
-
-                // insert order list
-
-                // sort order
             OrderType::Sell => {
-
+                self.shot_orders.queue_order(&order);
             },
-            _ = {
+            _ => {
                 println!("Unknown order type {:?} / use B or S", side);
             }
         }
 
-        return false;
+        return Err(OrderStatus::Error);
     }
 
-    // トータルだけ計算する。
-    // TODO: もっと上位で設定をかえられるようにする。
-    // MaketとTakerでも両率を変更する。
-    fn calc_profit(order: &mut OrderResult) {
-        order.fee = order.size * 0.0006;
-        order.profit -= order.fee;
-    }
 
+    // order_resultのログを蓄積する（オンメモリ）
     fn log_order_result(&mut self, order: &mut OrderResult) {
         let mut order_result = order.clone();
         order_result.timestamp = self.current_time;
@@ -411,6 +408,15 @@ impl SessionValue {
         self.order_history.push(order_result);
     }
 
+   
+    // トータルだけ損益を計算する。
+    // log_order_resultの中で計算している。
+    // TODO: もっと上位で設定をかえられるようにする。
+    // MaketとTakerでも両率を変更する。
+    fn calc_profit(order: &mut OrderResult) {
+        order.fee = order.size * 0.0006;
+        order.profit -= order.fee;
+    }
 
 }
 
