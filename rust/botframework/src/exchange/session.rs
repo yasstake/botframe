@@ -235,7 +235,9 @@ impl SessionValue {
         return (self.last_buy_price + self.last_sell_price) / 2.0;
     }
 
+    // TODO: 計算する。
     fn get_avairable_balance() -> f64 {
+        assert!(false, "not implemnted");
         return 0.0;
     }
 
@@ -343,7 +345,8 @@ impl SessionValue {
         //  0. AgentへTick更新イベントを発生させる。
         //  1. 時刻のUpdate
 
-        //　売り買いの約定が発生していないときは未初期化のためリターン（なにもしない）
+        //　売り買いの約定が発生していないときは未初期化のためリターン
+        （なにもしない）
         if self.last_buy_price == 0.0 || self.last_buy_price == 0.0 {
             return;
         }
@@ -361,29 +364,39 @@ impl SessionValue {
     /// _partial_workはオーダーした量と同じ値をセットする。
     /// オーダーエントリー後は値段と時間でソートする。
     ///
-    fn insert_order(&mut self, side: &str, price: f64, size: f64, duration_ms: i64) -> bool {
-        let order_id = self.generate_id();
+    fn update_position(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> bool {
+        // let order_id = self.generate_id();
         // let order = Order::new(order_id, self.current_time, self.current_time + duration_ms, price, size, false);
 
+
+
+
         match side {
-            BUY => {
-                // check if the order become taker of maker
+
+
+            OrderType::Buy => {
+
+
+            },
+               // check if the order become taker of maker
 
                 // insert order list
 
                 // sort order
-            }
-            SELL => {
-                // check if the order become taker of maker
-            }
-            _ => {
-                println!("Unknown order type {} / use B or S", side);
+            OrderType::Sell => {
+
+            },
+            _ = {
+                println!("Unknown order type {:?} / use B or S", side);
             }
         }
 
         return false;
     }
 
+    // トータルだけ計算する。
+    // TODO: もっと上位で設定をかえられるようにする。
+    // MaketとTakerでも両率を変更する。
     fn calc_profit(order: &mut OrderResult) {
         order.fee = order.size * 0.0006;
         order.profit -= order.fee;
@@ -559,7 +572,7 @@ mod TestPosition {
         assert_eq!(position.size,  200.0 * 4.0 + 100.0 - 100.0);                // 数は減る
         assert_eq!(position.price,  (900.0) / (100.0/50.0 + 200.0/200.0*4.0));  // 単価は同じ
 
-        //ポジションクローズのテスト（大きいオーダーのクローズ）
+        //ポジションクローズのテスト（大きいオーダーのクローズではエラーがかえってくる）
         println!("-- CLOSE BIG ---");        
         orders[0].size = 10000.0;
         println!("{:?} {:?}", position, orders[0]);
@@ -568,9 +581,26 @@ mod TestPosition {
         println!("{:?} {:?}", position, orders[0]);
         assert_eq!(r.err(), Some(OrderStatus::OverPosition));
 
+        //オーダーの分割テスト（大きいオーダを分割して処理する。１つがPositionを全クリアする大きさにして、残りを新規ポジションの大きさにする）
+        let mut small_order = &mut orders[0];
+        println!("{:?}", small_order);
+
+        let remain_order = &mut small_order.split_child(position.size).unwrap();
+        println!("{:?}", small_order);
+        println!("{:?}", remain_order);
+        println!("{:?}", position);
+
+        position.close_position(small_order);
+        println!("{:?}", small_order);
+        println!("{:?}", position);
+        position.open_position(remain_order);
+        println!("{:?}", remain_order);
+        println!("{:?}", position);
+
+        
+        
 
 
-        //オーダーの分割テスト
 
     }
 }
