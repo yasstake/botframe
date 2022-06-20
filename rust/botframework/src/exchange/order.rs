@@ -36,24 +36,32 @@ impl OrderType {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum OrderStatus {
     NoAction,
-    Enqueue,
+    Wait,               // 処理中
+    Enqueue,            // オーダー中
     OrderComplete,      // tempolary status.
-    OpenOrder,
-    CloseOrder,         // このときだけ、損益計算する。
-    ExpireOrder,
-    Liquidation,
-    NoMoney,
+    OpenOrder,          // ポジションオープン
+    CloseOrder,         // ポジションクローズ（このときだけ、損益計算する）
+    OverPosition,       // ポジション以上の反対売買。別途分割して処理する。
+    ExpireOrder,        // 期限切れ
+    Liquidation,        // 精算
+    PostOnly,           // 指値不成立。
+    NoMoney,            //　証拠金不足（オーダできず）
+    Error,              // その他エラー（基本的には発生させない）
 }
 
 #[derive(Debug, Clone)]
 pub struct OrderResult {
     pub timestamp: i64,
     pub order_id: String,
+    pub order_sub_id: i32,       // 分割された場合に利用
     pub order_type: OrderType,
+    pub post_only: bool,
     pub create_time: i64,
     pub status: OrderStatus,
-    pub price: f64,
+    pub open_price: f64,
+    pub close_price: f64,
     pub size: f64, // in usd
+    pub volume: f64, //in BTC
     pub profit: f64,
     pub fee: f64,
     pub total_profit: f64,
@@ -68,11 +76,15 @@ impl OrderResult {
         return OrderResult {
             timestamp: timestamp,
             order_id: order.order_id.clone(),
+            order_sub_id: 0,
             order_type: order.order_type,
+            post_only: order.post_only,
             create_time: order.create_time,
             status: status,
-            price: order.price,
+            open_price: order.price,
+            close_price: 0.0,
             size: order.size,
+            volume: order.size / order.price,
             profit: 0.0,
             fee: 0.0,
             total_profit: 0.0,
@@ -80,21 +92,21 @@ impl OrderResult {
     }
 
     /// オーダーを指定された大きさで２つに分ける。
-    /// 分けられない場合は元々オーダをCLoneしたものが返る。
-    /// 
-    pub fn split_child(&self, size: f64) -> Vec<OrderResult> {
-        let mut parent = self.clone();
-
+    /// 子供のオーダについては、sub_idが１インクリメントする。
+    /// 分けられない場合は空のリストが返る。
+    pub fn split_child(&self, size: f64) -> Result<Vec<OrderResult>, OrderStatus> {
         if self.size < size {     // do nothing.
-            return vec![];
+            return Err(OrderStatus::NoAction);
         }
 
+        let mut parent = self.clone();
         let mut child = self.clone();
 
         child.size = size;
+        child.order_sub_id = parent.order_sub_id + 1;
         parent.size -= size;        
 
-        return vec![parent, child]
+        return Ok(vec![parent, child]);
     }
 }
 
@@ -106,6 +118,7 @@ pub struct Order {
     pub create_time: i64, // in ms
     pub order_id: String, // YYYY-MM-DD-SEQ
     pub order_type: OrderType,
+    pub post_only: bool,
     pub valid_until: i64, // in ms
     pub price: f64,
     pub size: f64,        // in USD
@@ -118,6 +131,7 @@ impl Order {
         create_time: i64, // in ms
         order_id: String, // YYYY-MM-DD-SEQ
         order_type: OrderType,
+        post_only: bool,
         valid_until: i64, // in ms
         price: f64,
         size: f64, // in USD
@@ -127,6 +141,7 @@ impl Order {
             create_time: create_time,
             order_id: order_id,
             order_type: order_type,
+            post_only: post_only,
             valid_until: valid_until,
             price: price,
             size: size,
@@ -142,6 +157,7 @@ impl Order {
 /// ・　オーダー中のマージン計算
 /// ・　オーダーのExpire
 /// ・　オーダーの約定
+#[derive(Debug)]
 pub struct Orders {
     buy_queue: bool,
     q: Vec<Order>,
@@ -218,7 +234,7 @@ impl Orders {
 
     ///　全件なめる処理になるので数秒ごとに１回でOKとする。
     /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
-    fn expire(&mut self, current_time_ms: i64) -> Result<OrderResult, OrderStatus> {
+    pub fn expire(&mut self, current_time_ms: i64) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
         if l == 0 {
@@ -307,12 +323,10 @@ impl Orders {
             if self.q[i].remain_size <= 0.0 {
                 let order = &self.q.remove(i);
 
-                // TODO: 取引手数料の計算
                 let close_order = OrderResult::from_order(
                     current_time_ms,
                     &order,
                     OrderStatus::OrderComplete);
-
 
                 return Ok(close_order);
             }
@@ -354,14 +368,16 @@ mod ClosedOrderTest{
 
     #[test] 
     fn test_ClosedOrder (){
-        let order = Order::new(1, "close".to_string(), OrderType::Buy, 100, 100.1, 100.1, false);
+        let order = Order::new(1, "close".to_string(), 
+        OrderType::Buy, true, 100, 100.1, 100.1, false);
 
         let close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
 
-        let orders = close_order.split_child(50.0);
+        let orders = close_order.split_child(50.0).unwrap();
 
         println!("{:?}", orders[0]);
-        println!("{:?}", orders[1]);        
+        println!("{:?}", orders[1]);
+        assert_eq!(orders[0].order_sub_id + 1, orders[1].order_sub_id);
     }
 }
 
@@ -375,6 +391,7 @@ fn make_orders(buy_order: bool) -> Orders {
         1,
         "low price".to_string(),
         OrderType::Buy,
+        false,
         100,
         100.0,
         100.0,
@@ -383,7 +400,7 @@ fn make_orders(buy_order: bool) -> Orders {
     let o2 = Order::new(
         3,
         "low price but later".to_string(),
-        OrderType::Buy,
+        OrderType::Buy, false,
         200,
         100.0,
         50.0,
@@ -392,7 +409,7 @@ fn make_orders(buy_order: bool) -> Orders {
     let o3 = Order::new(
         2,
         "high price".to_string(),
-        OrderType::Buy,
+        OrderType::Buy, false,
         300,
         200.0,
         200.0,
@@ -401,7 +418,7 @@ fn make_orders(buy_order: bool) -> Orders {
     let o4 = Order::new(
         1,
         "high price but first".to_string(),
-        OrderType::Buy,
+        OrderType::Buy, false,
         400,
         200.0,
         50.0,
