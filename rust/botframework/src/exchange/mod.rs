@@ -1,5 +1,6 @@
 
 use chrono::NaiveDateTime;
+
 use ndarray::Data;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
@@ -13,7 +14,6 @@ use polars::prelude::SortOptions;
 pub mod session;
 pub mod order;
 
-use order::OrderType;
 
 #[derive(Debug)]
 pub struct Trade {
@@ -290,6 +290,9 @@ impl MarketInfo for Market {
 ////////////////////////////////////////////////////////////////////////////////
 ///    TEST SECION
 ////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+use order::OrderType;
 
 
 #[test]

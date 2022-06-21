@@ -34,7 +34,7 @@ const BB_SUBSCRIBE_EXEC: &str = r#"{"op":"subscribe","args": ["trade.BTCUSD"]}"#
 #[tokio::main]
 #[test]
 async fn test_connect_async_to_wss() -> Result<()> {
-    let connection = connect_to_wss(BB_WS_ENDPOINT).await?;
+    let _connection = connect_to_wss(BB_WS_ENDPOINT).await?;
 
     println!("connected ");
 
@@ -49,13 +49,6 @@ async fn connect_to_wss(wss_url: &str) -> Result<WebSocketStream<MaybeTlsStream<
     Ok(stream)
 }
 
-#[tokio::main]
-#[test]
-async fn test_ws_loop() -> Result<()> {
-    ws_loop(BB_WS_ENDPOINT);
-
-    Ok(())
-}
 
 async fn ws_loop(url_str: &str) -> Result<()> {
     // Connect
@@ -73,7 +66,7 @@ async fn ws_loop(url_str: &str) -> Result<()> {
         .await
     {
         Ok(_) => println!("subscribed to liquidation topic"),
-        Err(e) => println!("Error"),
+        Err(e) => println!("Error {:?}", e),
     }
 
     let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
@@ -185,23 +178,24 @@ async fn ws_loop(url_str: &str) -> Result<()> {
 }
 
 #[tokio::main]
+
 async fn main() {
     println!("start");
+
     ws_loop(BB_WS_ENDPOINT).await;
 }
 
-use serde_json::json;
-
-const TRADE_RECORD: &str = r#"
+#[cfg(test)]
+const _TRADE_RECORD: &str = r#"
 {"topic":"ParseTradeMessage.BTCUSD",
  "data":[
        {"trade_time_ms":1619398389868,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":2000,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"8241a632-9f07-5fa0-a63d-06cefd570d75","cross_seq":6169452432},
        {"trade_time_ms":1619398389947,"timestamp":"2021-04-26T00:53:09.000Z","symbol":"BTCUSD","side":"Sell","size":200,"price":50703.5,"tick_direction":"ZeroMinusTick","trade_id":"ff87be41-8014-5a33-b4b1-3252a6422a41","cross_seq":6169452432}]}
 "#;
 
-use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
+/*
 #[derive(Debug, Serialize)]
 #[serde(tag = "topic")]
 enum BbMessage {
@@ -218,6 +212,7 @@ enum BbMessage {
         cross_seq: u64,
     },
 }
+*/
 
 /*
 #[test]
@@ -228,14 +223,6 @@ fn test_parse_trade_record() {
 
 */
 
-struct TradeMessage {}
-
-struct TradeRecord {
-    time: u64, // time in ms
-    price: f32,
-    size: u32,
-    id: u128,
-}
 
 /*
 #[tokio::main]
