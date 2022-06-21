@@ -14,9 +14,11 @@ use crate::exchange::order::Orders;
 use crate::exchange::order::OrderResult;
 
 #[derive(Debug)]
+///　ポジションの１項目
+/// 　Positionsでポジションリストを扱う。
 pub struct Position {
     price: f64,
-    size: f64,      // in USD
+    size: f64, // in USD
 }
 
 impl Position {
@@ -32,6 +34,9 @@ impl Position {
         return self.size / self.price;
     }
 
+    /// ポジションをオープンする。
+    /// すでに約定は住んでいるはずなので、エラーは出ない。
+    /// 新規にポジションの平均取得単価を計算する。
     fn open_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
         order.status = OrderStatus::OpenOrder;
 
@@ -49,31 +54,36 @@ impl Position {
         return Ok(());
     }
 
+    /// ポジションを閉じる。
+    /// 閉じるポジションがない場合：　          なにもしない
+    /// オーダーがポジションを越える場合：      エラーを返す（呼び出し側でオーダーを分割し、ポジションのクローズとオープンを行う）
+    /// オーダーよりポジションのほうが大きい場合：オーダ分のポジションを解消する。
     fn close_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
         if self.size == 0.0 {
             // ポジションがない場合なにもしない。
-            self.price = 0.0;  // 念の為（誤差解消のためポジション０のときはリセット）
-            println!("Nocation");            
+            self.price = 0.0; // 念の為（誤差解消のためポジション０のときはリセット）
+            println!("Nocation");
             return Err(OrderStatus::NoAction);
         } else if self.size < order.size {
-            // ポジション以上にクローズしようとした場合なにもしない（別途分割してクローズする）
+            // ポジション以上にクローズしようとした場合なにもしない（別途、クローズとオープンに分割して処理する）
             println!("OverPosition");
             return Err(OrderStatus::OverPosition);
         }
-        println!("Normal Close");                    
+        println!("Normal Close");
         // オーダの全部クローズ（ポジションは残る）
         order.status = OrderStatus::CloseOrder;
         order.close_price = order.open_price;
         order.open_price = self.price;
-        if order.order_type == OrderType::Buy {  // 買い注文でクローズ
+        if order.order_type == OrderType::Buy {
+            // 買い注文でクローズ
             order.profit = (order.open_price - order.close_price) * order.volume;
-        }
-        else if order.order_type == OrderType::Sell {  //売り注文でクローズ
+        } else if order.order_type == OrderType::Sell {
+            //売り注文でクローズ
             order.profit = (order.close_price - order.open_price) * order.volume;
         }
 
         // ポジションの整理
-        self.size -= order.size; 
+        self.size -= order.size;
 
         return Ok(());
     }
@@ -101,6 +111,8 @@ impl Positions {
         return self.short_position.calc_volume();
     }
 
+    /// ポジションからできるマージンを計算する。
+    /// 本来は手数料も込みだが、あとまわし　TODO: 手数料計算
     fn get_margin(&self, center_price: f64) -> f64 {
         let long_margin = (center_price - self.long_position.price)     // 購入単価 - 現在単価
              * self.long_volume();
@@ -123,30 +135,52 @@ impl Positions {
         match order.order_type {
             OrderType::Buy => {
                 match self.short_position.close_position(order) {
-                    Ok(()) => {return Ok(());}
+                    Ok(()) => {
+                        return Ok(());
+                    }
                     Err(e) => {
                         if e == OrderStatus::NoAction {
                             return self.long_position.open_position(order);
+                        } else {
+                            return Err(e);
                         }
-                        else {return Err(e);}
                     }
-                }; 
+                };
             }
-            OrderType::Sell => {
-                match self.long_position.close_position(order) {
-                    Ok(()) => {return Ok(());}
-                    Err(e) => {
-                        if e == OrderStatus::NoAction {
-                            return self.short_position.open_position(order);
-                        }
-                        else {return Err(e);}
+            OrderType::Sell => match self.long_position.close_position(order) {
+                Ok(()) => {
+                    return Ok(());
+                }
+                Err(e) => {
+                    if e == OrderStatus::NoAction {
+                        return self.short_position.open_position(order);
+                    } else {
+                        return Err(e);
                     }
                 }
-            },        
+            },
             _ => {
                 return Err(OrderStatus::Error);
             }
         }
+    }
+
+    fn split_order(&self, order: &mut OrderResult) -> Result<OrderResult, OrderStatus> {
+        let mut size = 0.0;
+
+        match order.order_type {
+            OrderType::Buy => {
+                size = self.short_position.size;
+            }
+            OrderType::Sell => {
+                size = self.short_position.size;
+            }
+            _ => {
+                return Err(OrderStatus::Error);
+            }
+        }
+
+        return order.split_child(size);
     }
 }
 
@@ -188,7 +222,7 @@ pub struct SessionValue {
     _start_offset: i64,
     last_sell_price: f64,
     last_buy_price: f64,
-    current_time: i64,
+    current_time_ms: i64,
     long_orders: Orders,
     shot_orders: Orders,
     positions: Positions,
@@ -205,7 +239,7 @@ impl SessionValue {
             _start_offset: start_offset,
             last_sell_price: 0.0,
             last_buy_price: 0.0,
-            current_time: 0,
+            current_time_ms: 0,
             long_orders: Orders::new(true),
             shot_orders: Orders::new(false),
             positions: Positions::new(),
@@ -227,7 +261,7 @@ impl SessionValue {
         return id.to_string();
     }
 
-    fn get_center_price(&self) -> f64 {
+    pub fn get_center_price(&self) -> f64 {
         if self.last_buy_price == 0.0 || self.last_sell_price == 0.0 {
             return 0.0;
         }
@@ -236,7 +270,7 @@ impl SessionValue {
     }
 
     // TODO: 計算する。
-    fn get_avairable_balance() -> f64 {
+    pub fn get_avairable_balance(&self) -> f64 {
         assert!(false, "not implemnted");
         return 0.0;
     }
@@ -276,30 +310,46 @@ impl SessionValue {
     fn exec_event_update_time(
         &mut self,
         current_time_ms: i64,
-        action: OrderType,
+        order_type: OrderType,
         price: f64,
-        size: f64,
+        _size: f64,
     ) {
-        self.current_time = current_time_ms;
+        self.current_time_ms = current_time_ms;
 
-        //  ２。マーク価格の更新。ログとはエッジが逆になる。
-        match action {
-            OrderType::Buy => self.last_sell_price = price,
-            OrderType::Sell => self.last_buy_price = price,
+        //  ２。マーク価格の更新。ログとはエージェント側からみるとエッジが逆になる。
+        match order_type {
+            OrderType::Buy => {
+                self.last_sell_price = price;
+            }
+            OrderType::Sell => {
+                self.last_buy_price = price;
+            }
             _ => {}
+        }
+
+        // 逆転したら補正。　(ほとんど呼ばれない想定)
+        // 数値が初期化されていない場合２つの値は0になっているが、マイナスにはならないのでこれでOK.
+        if self.last_buy_price < self.last_sell_price {
+            println!(
+                "Force update price buy=> {}  /  sell=> {}",
+                self.last_buy_price, self.last_sell_price
+            );
+            self.last_sell_price = self.last_buy_price;
         }
     }
 
     /// オーダの期限切れ処理を行う。
     /// エラーは返すが、エラーが通常のため処理する必要はない。
-    /// OKの場合、上位でログ処理する。
-    fn exec_event_expire_order(&mut self, current_time_ms: i64) -> Result<&OrderResult, OrderStatus> {
-        
+    /// 逆にOKの場合のみ、上位でログ処理する。
+    fn exec_event_expire_order(
+        &mut self,
+        current_time_ms: i64,
+    ) -> Result<OrderResult, OrderStatus> {
         // ロングの処理
         match self.long_orders.expire(current_time_ms) {
             Ok(result) => {
-                return Ok(&result);
-            },
+                return Ok(result);
+            }
             _ => {
                 // do nothing
             }
@@ -307,34 +357,74 @@ impl SessionValue {
         // ショートの処理
         match self.shot_orders.expire(current_time_ms) {
             Ok(result) => {
-                return Ok(&result);
-            },
+                return Ok(result);
+            }
             _ => {
                 // do nothng
             }
         }
-        return Err(OrderStatus::NoAction);                        
+        return Err(OrderStatus::NoAction);
     }
 
     //　売りのログのときは、買いオーダーを処理
     // 　買いのログの時は、売りオーダーを処理。
-    // 最後にログに追加する。
     fn exec_event_execute_order(
         &mut self,
         current_time_ms: i64,
         order_type: OrderType,
         price: f64,
         size: f64,
-    )  -> Result<OrderResult, OrderStatus>
-    {
+    ) -> Result<OrderResult, OrderStatus> {
         match order_type {
             OrderType::Buy => {
-                return self.long_orders.execute(current_time_ms, price, size);
-            }
-            OrderType::Sell => {
                 return self.shot_orders.execute(current_time_ms, price, size);
             }
-            _ => {return Err(OrderStatus::Error)}
+            OrderType::Sell => {
+                return self.long_orders.execute(current_time_ms, price, size);
+            }
+            _ => return Err(OrderStatus::Error),
+        }
+    }
+
+    fn update_position(&mut self, order_result: &mut OrderResult) -> Result<(), OrderStatus> {
+        //ポジションに追加しする。
+        //　結果がOpen,Closeポジションが行われるのでログに実行結果を追加
+        match &mut self.positions.update_position(order_result) {
+            Ok(()) => {
+                self.log_order_result(&order_result);
+                return Ok(());
+            }
+            Err(e) => {
+                match e {
+                    OrderStatus::OverPosition => {
+                        // こわけする
+                        match self.positions.split_order(order_result) {
+                            Ok(mut child_order) => {
+                                let r = self.update_position(order_result);
+                                if r.is_err() {
+                                    println!("OpenPositionError {:?}", r);
+                                }
+
+                                let r = self.update_position(&mut child_order);
+                                if r.is_err() {
+                                    println!("OpenPositionError {:?}", r);
+                                }
+
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                println!("Split error {:?}", e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    _ => {
+                        // TODO　ここにはこないはず。
+                        println!("ERR {:?}", e);
+                        return Err(OrderStatus::Error);
+                    }
+                }
+            }
         }
     }
 
@@ -359,36 +449,72 @@ impl SessionValue {
         // 　2. オーダ中のオーダーを更新する。
         // 　　　　　期限切れオーダーを削除する。
         //          毎秒１回実施する（イベントを間引く）
-        //      処理継続        
-        let order_result = self.exec_event_expire_order(current_time_ms); 
+        //      処理継続
+        match self.exec_event_expire_order(current_time_ms) {
+            Ok(result) => {
+                self.log_order_result(&result);
+            }
+            _ => {
+                // Do nothing
+            }
+        }
+        // ログに追加
+        //現在のオーダーから執行可能な量を _partial_workから引き算し０になったらオーダ成立（一部約定はしない想定）
+        match self.exec_event_execute_order(current_time_ms, order_type, price, size) {
+            Ok(mut order_result) => {
+                self.log_order_result(&order_result); // ここ不要かも
 
-        //現在のオーダーから執行可能な量を _partial_workから引き算し０になったらオーダ成立（一部約定はしない想定）        
-        //ポジションに追加しする。
-        //　結果がOpen,Closeポジションが行われるのでログに実行結果を追加
-        let order_result = self.exec_event_execute_order(current_time_ms, order_type, price, size);
-
-        // ポジションクローズ＋アルファの大きさがある場合のリトライも行う。 
-
+                //ポジションに追加しする。
+                //　ログはupdate_position内で実施（分割があるため）
+                let result = self.positions.update_position(&mut order_result);
+            }
+            Err(e) => {
+                if e == OrderStatus::NoAction {
+                    // Do nothing
+                } else {
+                    println!("ERROR status {:?} ", e);
+                }
+            }
+        }
     }
 
     /// オーダー作りオーダーリストへ追加する。
     /// 最初にオーダー可能かどうか確認する（余力の有無）
-    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus> {
+    fn make_order(
+        &mut self,
+        side: OrderType,
+        price: f64,
+        size: f64,
+        duration_ms: i64,
+    ) -> Result<(), OrderStatus> {
         // TODO: 発注可能かチェックする
-        
+
+        /*
+        if 証拠金不足
+            return Err(OrderStatus::NoMoney);
+        */
+
         let order_id = self.generate_id();
-        let order = Order::new
-            (self.current_time, order_id, side, true, 
-                self.current_time + duration_ms, price, size, false);
+        let order = Order::new(
+            self.current_time_ms,
+            order_id,
+            side,
+            true,
+            self.current_time_ms + duration_ms,
+            price,
+            size,
+            false,
+        );
         match side {
             OrderType::Buy => {
                 // TODO: Takerになるかどうか確認
                 self.long_orders.queue_order(&order);
-                return 
-            },
+                return Ok(());
+            }
             OrderType::Sell => {
                 self.shot_orders.queue_order(&order);
-            },
+                return Ok(());
+            }
             _ => {
                 println!("Unknown order type {:?} / use B or S", side);
             }
@@ -397,18 +523,18 @@ impl SessionValue {
         return Err(OrderStatus::Error);
     }
 
-
     // order_resultのログを蓄積する（オンメモリ）
-    fn log_order_result(&mut self, order: &mut OrderResult) {
+    // ログオブジェクトは配列にいれるためClone する。
+    // TODO: この中でAgentへコールバックできるか調査
+    fn log_order_result(&mut self, order: &OrderResult) {
         let mut order_result = order.clone();
-        order_result.timestamp = self.current_time;
+        order_result.timestamp = self.current_time_ms;
 
         Self::calc_profit(&mut order_result);
 
         self.order_history.push(order_result);
     }
 
-   
     // トータルだけ損益を計算する。
     // log_order_resultの中で計算している。
     // TODO: もっと上位で設定をかえられるようにする。
@@ -417,7 +543,6 @@ impl SessionValue {
         order.fee = order.size * 0.0006;
         order.profit -= order.fee;
     }
-
 }
 
 pub trait Agent {
@@ -428,7 +553,7 @@ pub trait Agent {
 
 pub trait Session {
     fn get_timestamp_ms(&self) -> i64;
-    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> OrderStatus;
+    //    fn make_order(&self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> OrderStatus;
     /*
     fn get_active_orders(&self) -> [Order];
     fn get_posision(&self) -> (Position, Position); // long/short
@@ -445,11 +570,7 @@ pub trait Session {
 
 impl Session for SessionValue {
     fn get_timestamp_ms(&self) -> i64 {
-        return self.current_time;
-    }
-
-    fn make_order(&self, side: &str, price: f64, size: f64, duration_ms: i64) -> OrderStatus {
-        return OrderStatus::NoMoney;
+        return self.current_time_ms;
     }
 
     /*
@@ -568,18 +689,24 @@ mod TestPosition {
         println!("{:?} {:?}", position, orders[4]);
         let r = position.open_position(&mut orders[5]);
         println!("{:?} {:?}", position, orders[5]);
-        assert_eq!(position.size,  200.0 * 4.0 + 100.0);
-        assert_eq!(position.price,  (900.0) / (100.0/50.0 + 200.0/200.0*4.0));
+        assert_eq!(position.size, 200.0 * 4.0 + 100.0);
+        assert_eq!(
+            position.price,
+            (900.0) / (100.0 / 50.0 + 200.0 / 200.0 * 4.0)
+        );
 
         // ポジションのクローズのテスト（小さいオーダーのクローズ
-        println!("-- CLOSE ---");        
+        println!("-- CLOSE ---");
         let r = position.close_position(&mut orders[6]);
         println!("{:?} {:?}", position, orders[6]);
-        assert_eq!(position.size,  200.0 * 4.0 + 100.0 - 100.0);                // 数は減る
-        assert_eq!(position.price,  (900.0) / (100.0/50.0 + 200.0/200.0*4.0));  // 単価は同じ
+        assert_eq!(position.size, 200.0 * 4.0 + 100.0 - 100.0); // 数は減る
+        assert_eq!(
+            position.price,
+            (900.0) / (100.0 / 50.0 + 200.0 / 200.0 * 4.0)
+        ); // 単価は同じ
 
         //ポジションクローズのテスト（大きいオーダーのクローズではエラーがかえってくる）
-        println!("-- CLOSE BIG ---");        
+        println!("-- CLOSE BIG ---");
         orders[0].size = 10000.0;
         println!("{:?} {:?}", position, orders[0]);
         let r = position.close_position(&mut orders[0]);
@@ -602,12 +729,6 @@ mod TestPosition {
         position.open_position(remain_order);
         println!("{:?}", remain_order);
         println!("{:?}", position);
-
-        
-        
-
-
-
     }
 }
 
@@ -684,6 +805,8 @@ mod TestPositions {
 
 #[cfg(test)]
 mod TestSessionValue {
+    use serde::de::Expected;
+
     use super::*;
     #[test]
     fn test_new() {
@@ -694,11 +817,14 @@ mod TestSessionValue {
     fn test_SessionValue() {
         let mut session = SessionValue::new(1);
 
+        // IDの生成テスト
+        // self.generate_id
         let id = session.generate_id();
         println!("{}", id);
         let id = session.generate_id();
         println!("{}", id);
 
+        //
         let current_time = session.get_timestamp_ms();
         println!("{}", current_time);
 
@@ -711,5 +837,58 @@ mod TestSessionValue {
         session.last_buy_price = 200.0;
         session.last_sell_price = 200.0;
         assert_eq!(session.get_center_price(), 200.0);
+    }
+
+    #[test]
+    fn test_avariable_balance() {
+        let mut session = SessionValue::new(1);
+        let balnace = session.get_avairable_balance();
+        println!("balance = {}", balnace);
+    }
+
+    #[test]
+    fn test_event_update_time() {
+        let mut session = SessionValue::new(1);
+        assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
+
+        session.exec_event_update_time(123, OrderType::Buy, 101.0, 10.0);
+        assert_eq!(session.get_timestamp_ms(), 123);
+        assert_eq!(session.last_sell_price, 101.0); // Agent側からみるとsell_price
+        assert_eq!(session.get_center_price(), 0.0); // 初期化未のときは０
+
+        session.exec_event_update_time(135, OrderType::Sell, 100.0, 10.0);
+        assert_eq!(session.get_timestamp_ms(), 135);
+        assert_eq!(session.last_sell_price, 101.0);
+        assert_eq!(session.last_buy_price, 100.0); // Agent側からみるとbuy_price
+        assert_eq!(session.get_center_price(), 100.5); // buyとSellの中間
+    }
+
+    #[test]
+    fn test_exec_event_execute_order() {
+        let mut session = SessionValue::new(1);
+        assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
+
+        // Warm Up
+        session.main_exec_event(1, OrderType::Sell, 150.0, 150.0);
+        session.main_exec_event(2, OrderType::Buy, 151.0, 151.0);
+
+        // TODO: 書庫金不足を確認する必要がある.
+        session.make_order(OrderType::Buy, 50.0, 10.0, 100);
+        println!("{:?}", session);
+
+        // 売りよりも高い金額のオファーにはなにもしない。
+        session.main_exec_event(3, OrderType::Sell, 50.0, 150.0);
+        println!("{:?}", session);
+
+        // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定
+        session.main_exec_event(4, OrderType::Sell, 49.5, 5.0);
+        println!("{:?}", session);
+
+        // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定.２回目で約定。ポジションに登録
+        session.main_exec_event(5, OrderType::Sell, 49.5, 5.0);
+        println!("{:?}", session);
+
+        session.exec_event_execute_order(1, OrderType::Buy, 100.0, 50.0);
+        assert_eq!(session.long_orders.len(), 1);
     }
 }

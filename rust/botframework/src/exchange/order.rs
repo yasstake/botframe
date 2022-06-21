@@ -240,9 +240,14 @@ impl Orders {
         return self.q.is_empty() == false;
     }
 
+    /// Queueの数
+    pub fn len(&self) -> usize {
+        return self.q.len();
+    }
+
     ///　全件なめる処理になるので数秒ごとに１回でOKとする。
     /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
-    pub fn expire(&mut self, current_time_ms: i64) -> Result<&OrderResult, OrderStatus> {
+    pub fn expire(&mut self, current_time_ms: i64) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
         if l == 0 {
@@ -258,7 +263,7 @@ impl Orders {
                     &order,
                     OrderStatus::ExpireOrder);
 
-                return Ok(&close_order);
+                return Ok(close_order);
             }
         }
 
@@ -322,7 +327,6 @@ impl Orders {
     }
 
     ///　全額処理されたオーダをキューから取り出し ClosedOrderオブジェクトを作る。
-    /// 損益データはここでは入れない。取り出したあとで別途設定する。
     fn pop_close_order(&mut self, current_time_ms: i64) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
@@ -436,11 +440,11 @@ fn make_orders(buy_order: bool) -> Orders {
         false,
     );
 
-    orders.queue_order(o1);
+    orders.queue_order(&o1);
     assert_eq!(orders.has_q(), true);
-    orders.queue_order(o2);
-    orders.queue_order(o3);
-    orders.queue_order(o4);
+    orders.queue_order(&o2);
+    orders.queue_order(&o3);
+    orders.queue_order(&o4);
 
     return orders;
 }
