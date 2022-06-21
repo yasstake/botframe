@@ -39,8 +39,8 @@ pub enum OrderStatus {
     Wait,               // 処理中
     Enqueue,            // オーダー中
     OrderComplete,      // tempolary status.
-    OpenOrder,          // ポジションオープン
-    CloseOrder,         // ポジションクローズ（このときだけ、損益計算する）
+    OpenPosition,          // ポジションオープン
+    ClosePosition,         // ポジションクローズ（このときだけ、損益計算する）
     OverPosition,       // ポジション以上の反対売買。別途分割して処理する。
     ExpireOrder,        // 期限切れ
     Liquidation,        // 精算
@@ -263,6 +263,8 @@ impl Orders {
                     &order,
                     OrderStatus::ExpireOrder);
 
+                    println!("Order expire {:?}", close_order);
+
                 return Ok(close_order);
             }
         }
@@ -286,6 +288,7 @@ impl Orders {
         }
 
         if self.execute_remain_size(price, size) {
+            println!("complete order");
             return self.pop_close_order(current_time_ms);
         }
 
@@ -294,7 +297,7 @@ impl Orders {
 
     /// キューの中に処理できるオーダーがあれば、size_remainをへらしていく。
     /// size_remainが０になったらオーダ完了の印。
-    /// 実際の取り出しは pop_order_historyで実施する。
+    /// 実際の取り出しは pop_close_orderで実施する。
     fn execute_remain_size(&mut self, price: f64, size: f64) -> bool {
         if self.has_q() == false {
             return false;
@@ -302,16 +305,15 @@ impl Orders {
 
         let l = self.q.len();
         let mut size_remain = size;
-        let mut update = false;
+        let mut complete_order = false;
 
         // 順番に価格条件をみたしたものから約定したこととし、remain_sizeをへらしていく。
         for i in 0..l {
-            if self.buy_queue && (price  < self.q[i].price)          // Buy Case
-                || (!self.buy_queue) && (self.q[i].price < price)
-            // Sell case
+            if ((self.buy_queue == true) && (price  < self.q[i].price))          // Buy Case
+                || ((self.buy_queue == false) && (self.q[i].price < price))      // Sell case
             {
-                update = true;
-                if self.q[i].remain_size < size_remain {
+                if self.q[i].remain_size <= size_remain {
+                    complete_order = true;                    
                     size_remain -= self.q[i].remain_size;
                     self.q[i].remain_size = 0.0;
                 } else {
@@ -321,9 +323,13 @@ impl Orders {
                     break;
                 }
             }
+            else {
+                // ソートされているので全件検索は不要。
+                break;
+            }
         }
 
-        return update;
+        return complete_order;
     }
 
     ///　全額処理されたオーダをキューから取り出し ClosedOrderオブジェクトを作る。
