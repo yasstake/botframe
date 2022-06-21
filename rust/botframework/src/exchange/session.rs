@@ -258,8 +258,8 @@ pub struct SessionValue {
     _session_id: String,
     _order_index: i64,
     _start_offset: i64,
-    last_sell_price: f64,
-    last_buy_price: f64,
+    sell_board_edge_price: f64,
+    buy_board_edge_price: f64,
     current_time_ms: i64,
     long_orders: Orders,
     short_orders: Orders,
@@ -275,8 +275,8 @@ impl SessionValue {
             _session_id: "0000".to_string(), // TODO: implemnet multisession
             _order_index: 0,
             _start_offset: start_offset,
-            last_sell_price: 0.0,
-            last_buy_price: 0.0,
+            sell_board_edge_price: 0.0,
+            buy_board_edge_price: 0.0,
             current_time_ms: 0,
             long_orders: Orders::new(true),
             short_orders: Orders::new(false),
@@ -300,11 +300,11 @@ impl SessionValue {
     }
 
     pub fn get_center_price(&self) -> f64 {
-        if self.last_buy_price == 0.0 || self.last_sell_price == 0.0 {
+        if self.buy_board_edge_price == 0.0 || self.sell_board_edge_price == 0.0 {
             return 0.0;
         }
 
-        return (self.last_buy_price + self.last_sell_price) / 2.0;
+        return (self.buy_board_edge_price + self.sell_board_edge_price) / 2.0;
     }
 
     // TODO: 計算する。
@@ -357,22 +357,22 @@ impl SessionValue {
         //  ２。マーク価格の更新。ログとはエージェント側からみるとエッジが逆になる。(TODO: 逆にするかも)
         match order_type {
             OrderType::Buy => {
-                self.last_sell_price = price;
+                self.sell_board_edge_price = price;
             }
             OrderType::Sell => {
-                self.last_buy_price = price;
+                self.buy_board_edge_price = price;
             }
             _ => {}
         }
 
         // 逆転したら補正。　(ほとんど呼ばれない想定)
         // 数値が初期化されていない場合２つの値は0になっているが、マイナスにはならないのでこれでOK.
-        if self.last_buy_price < self.last_sell_price {
+        if self.buy_board_edge_price < self.sell_board_edge_price {
             println!(
                 "Force update price buy=> {}  /  sell=> {}",
-                self.last_buy_price, self.last_sell_price
+                self.buy_board_edge_price, self.sell_board_edge_price
             );
-            self.last_sell_price = self.last_buy_price;
+            self.sell_board_edge_price = self.buy_board_edge_price;
         }
     }
 
@@ -514,7 +514,7 @@ impl SessionValue {
 
         //　売り買いの約定が発生していないときは未初期化のためリターン
         // （なにもしない）
-        if self.last_buy_price == 0.0 || self.last_buy_price == 0.0 {
+        if self.buy_board_edge_price == 0.0 || self.buy_board_edge_price == 0.0 {
             return;
         }
 
@@ -902,13 +902,13 @@ mod TestSessionValue {
         println!("{}", current_time);
 
         // test center price
-        session.last_buy_price = 100.0;
-        session.last_sell_price = 100.5;
+        session.buy_board_edge_price = 100.0;
+        session.sell_board_edge_price = 100.5;
         assert_eq!(session.get_center_price(), 100.25);
 
         // test center price
-        session.last_buy_price = 200.0;
-        session.last_sell_price = 200.0;
+        session.buy_board_edge_price = 200.0;
+        session.sell_board_edge_price = 200.0;
         assert_eq!(session.get_center_price(), 200.0);
     }
 
@@ -926,13 +926,13 @@ mod TestSessionValue {
 
         session.exec_event_update_time(123, OrderType::Buy, 101.0, 10.0);
         assert_eq!(session.get_timestamp_ms(), 123);
-        assert_eq!(session.last_sell_price, 101.0); // Agent側からみるとsell_price
+        assert_eq!(session.sell_board_edge_price, 101.0); // Agent側からみるとsell_price
         assert_eq!(session.get_center_price(), 0.0); // 初期化未のときは０
 
         session.exec_event_update_time(135, OrderType::Sell, 100.0, 10.0);
         assert_eq!(session.get_timestamp_ms(), 135);
-        assert_eq!(session.last_sell_price, 101.0);
-        assert_eq!(session.last_buy_price, 100.0); // Agent側からみるとbuy_price
+        assert_eq!(session.sell_board_edge_price, 101.0);
+        assert_eq!(session.buy_board_edge_price, 100.0); // Agent側からみるとbuy_price
         assert_eq!(session.get_center_price(), 100.5); // buyとSellの中間
     }
 
