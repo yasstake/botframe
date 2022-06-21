@@ -224,7 +224,7 @@ pub struct SessionValue {
     last_buy_price: f64,
     current_time_ms: i64,
     long_orders: Orders,
-    shot_orders: Orders,
+    short_orders: Orders,
     positions: Positions,
     order_history: Vec<OrderResult>,
     indicators: Vec<Indicator>,
@@ -241,7 +241,7 @@ impl SessionValue {
             last_buy_price: 0.0,
             current_time_ms: 0,
             long_orders: Orders::new(true),
-            shot_orders: Orders::new(false),
+            short_orders: Orders::new(false),
             positions: Positions::new(),
             order_history: vec![],
             indicators: vec![],
@@ -355,7 +355,7 @@ impl SessionValue {
             }
         }
         // ショートの処理
-        match self.shot_orders.expire(current_time_ms) {
+        match self.short_orders.expire(current_time_ms) {
             Ok(result) => {
                 return Ok(result);
             }
@@ -377,7 +377,7 @@ impl SessionValue {
     ) -> Result<OrderResult, OrderStatus> {
         match order_type {
             OrderType::Buy => {
-                return self.shot_orders.execute(current_time_ms, price, size);
+                return self.short_orders.execute(current_time_ms, price, size);
             }
             OrderType::Sell => {
                 return self.long_orders.execute(current_time_ms, price, size);
@@ -512,7 +512,7 @@ impl SessionValue {
                 return Ok(());
             }
             OrderType::Sell => {
-                self.shot_orders.queue_order(&order);
+                self.short_orders.queue_order(&order);
                 return Ok(());
             }
             _ => {
@@ -874,21 +874,41 @@ mod TestSessionValue {
 
         // TODO: 書庫金不足を確認する必要がある.
         session.make_order(OrderType::Buy, 50.0, 10.0, 100);
-        println!("{:?}", session);
+        println!("{:?}", session.order_history);
 
         // 売りよりも高い金額のオファーにはなにもしない。
         session.main_exec_event(3, OrderType::Sell, 50.0, 150.0);
-        println!("{:?}", session);
+        println!("{:?}", session.order_history);
 
         // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定
         session.main_exec_event(4, OrderType::Sell, 49.5, 5.0);
-        println!("{:?}", session);
+        println!("{:?}", session.order_history);
 
         // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定.２回目で約定。ポジションに登録
         session.main_exec_event(5, OrderType::Sell, 49.5, 5.0);
-        println!("{:?}", session);
+        println!("{:?}", session.order_history);
+        println!("{:?}", session.positions);        
 
-        session.exec_event_execute_order(1, OrderType::Buy, 100.0, 50.0);
-        assert_eq!(session.long_orders.len(), 1);
+        session.exec_event_execute_order(6,  OrderType::Buy, 100.0, 50.0);
+        println!("{:?}", session.order_history);
+        println!("{:?}", session.positions);        
+
+        // 決裁オーダーTODO: 書庫金不足を確認する必要がある.
+        session.make_order(OrderType::Sell, 40.0, 10.0, 100);
+        println!("{:?}", session.order_history);
+        println!("{:?}", session.short_orders);
+        println!("{:?}", session.positions);
+
+        session.exec_event_execute_order(7, OrderType::Buy, 100.0, 50.0);
+        println!("{:?}", session.order_history);
+        println!("{:?}", session.short_orders);
+        println!("{:?}", session.positions);
+
+        session.exec_event_execute_order(7, OrderType::Buy, 10.0, 50.0);
+        println!("{:?}", session.order_history);
+        println!("{:?}", session.short_orders);
+        println!("{:?}", session.positions);
+
+
     }
 }
