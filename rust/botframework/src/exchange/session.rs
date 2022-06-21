@@ -76,10 +76,10 @@ impl Position {
         order.open_price = self.price;
         if order.order_type == OrderType::Buy {
             // 買い注文でクローズ
-            order.profit = (order.open_price - order.close_price) * order.volume;
+            order.profit = (order.close_price - order.open_price) * order.volume;
         } else if order.order_type == OrderType::Sell {
             //売り注文でクローズ
-            order.profit = (order.close_price - order.open_price) * order.volume;
+            order.profit = (order.open_price - order.close_price) * order.volume;
         }
 
         // ポジションの整理
@@ -614,7 +614,6 @@ impl SessionValue {
     // MaketとTakerでも両率を変更する。
     fn calc_profit(order: &mut OrderResult) {
         order.fee = order.size * 0.0006;
-        order.profit -= order.fee;
         order.total_profit = order.profit - order.fee;
     }
 }
@@ -1054,18 +1053,22 @@ mod TestSessionValue {
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
 
+        session.make_order(OrderType::Sell, 41.0, 10.0, 100);
+        // println!("{:?}", session.order_history);
+        println!("{:?}", session.short_orders);
+        println!("{:?}", session.positions);
 
-        session.main_exec_event(5, OrderType::Buy, 49.5, 5.0);
+        session.main_exec_event(5, OrderType::Buy, 49.5, 11.0);
         println!("{:?}", session.positions);
         println!("{:?}", session.order_history);
 
 
-        session.main_exec_event(5, OrderType::Buy, 49.5, 5.0);
+        session.main_exec_event(5, OrderType::Buy, 49.5, 20.0);
         println!("{:?}", session.positions);
         println!("{:?}", session.order_history);
 
 
-        session.main_exec_event(5, OrderType::Buy, 49.5, 5.0);
+        session.main_exec_event(5, OrderType::Buy, 49.5, 100.0);
         println!("{:?}", session.positions);
         println!("{:?}", session.order_history);
 
@@ -1078,19 +1081,22 @@ mod TestSessionValue {
 
         // 約定
         session.main_exec_event(8, OrderType::Sell, 79.5, 200.0);
+        println!("{:?}", session.long_orders);
         println!("{:?}", session.positions);
         println!("{:?}", session.order_history);
+
     }
 }
 
-/*
-[OrderResult { timestamp: 5, order_id: "0000-000000000000-001", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 2, status: OpenPosition, open_price: 50.0, close_price: 0.0, size: 10.0, volume: 0.2, profit: -0.005999999999999999, fee: 0.005999999999999999, total_profit: 0.0 }, 
-OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 0, order_type: Sell, post_only: true, create_time: 5, status: ClosePosition, open_price: 50.0, close_price: 40.0, size: 10.0, volume: 0.25, profit: -2.506, fee: 0.005999999999999999, total_profit: 0.0 },
- OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 1, order_type: Sell, post_only: true, create_time: 5, status: OpenPosition, open_price: 40.0, close_price: 0.0, size: 2.0, volume: 0.05, profit: -0.0012, fee: 0.0012, total_profit: 0.0 }, 
- OrderResult { timestamp: 8, order_id: "0000-000000000000-003", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 5, status: ClosePosition, open_price: 40.0, close_price: 80.0, size: 2.0, volume: 0.025, profit: -1.0012, fee: 0.0012, total_profit: 0.0 },
-  OrderResult { timestamp: 8, order_id: "0000-000000000000-003", order_sub_id: 1, order_type: Buy, post_only: true, create_time: 5, status: OpenPosition, open_price: 80.0, close_price: 0.0, size: 8.0, volume: 0.1, profit: -0.0048, fee: 0.0048, total_profit: 0.0 }]
 
+/*
+[OrderResult { timestamp: 5, order_id: "0000-000000000000-001", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 2, status: OpenPosition, open_price: 50.0, close_price: 0.0, size: 10.0, volume: 0.2, profit: 0.0, fee: 0.005999999999999999, total_profit: -0.005999999999999999 }, 
+OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 0, order_type: Sell, post_only: true, create_time: 5, status: ClosePosition, open_price: 50.0, close_price: 40.0, size: 10.0, volume: 0.25, profit: 2.5, fee: 0.005999999999999999, total_profit: 2.494 }, 
+OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 1, order_type: Sell, post_only: true, create_time: 5, status: OpenPosition, open_price: 40.0, close_price: 0.0, size: 2.0, volume: 0.05, profit: 0.0, fee: 0.0012, total_profit: -0.0012 }, 
+OrderResult { timestamp: 8, order_id: "0000-000000000000-004", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 5, status: ClosePosition, open_price: 40.0, close_price: 80.0, size: 2.0, volume: 0.025, profit: 1.0, fee: 0.0012, total_profit: 0.9988 }, 
+OrderResult { timestamp: 8, order_id: "0000-000000000000-004", order_sub_id: 1, order_type: Buy, post_only: true, create_time: 5, status: OpenPosition, open_price: 80.0, close_price: 0.0, size: 8.0, volume: 0.1, profit: 0.0, fee: 0.0048, total_profit: -0.0048 }]
 */
+
 
 
 /*
