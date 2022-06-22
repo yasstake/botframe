@@ -659,7 +659,7 @@ fn test_build_orders() -> Vec<OrderResult> {
         false,
     );
 
-    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::Enqueue);
+    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::InOrder);
 
     let mut sell_close02 = sell_close01.clone();
     sell_close02.order_id = "aa".to_string();
@@ -677,7 +677,7 @@ fn test_build_orders() -> Vec<OrderResult> {
         100.0,
         false,
     );
-    let buy_close01 = OrderResult::from_order(2, &buy_order, OrderStatus::Enqueue);
+    let buy_close01 = OrderResult::from_order(2, &buy_order, OrderStatus::InOrder);
 
     let buy_close02 = buy_close01.clone();
     let buy_close03 = buy_close01.clone();

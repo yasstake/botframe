@@ -31,36 +31,66 @@ impl OrderType {
             }
         }
     }
+
+    pub fn to_long_string(&self) -> String {
+        match self {
+            OrderType::Buy => return "Buy".to_string(),
+            OrderType::Sell => return "Sell".to_string(),
+            OrderType::Unknown => {
+                println!("ERROR unknown order type");
+                return "UNKNOWN".to_string();
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum OrderStatus {
     NoAction,
-    Wait,               // 処理中
-    Enqueue,            // オーダー中
-    OrderComplete,      // tempolary status.
-    OpenPosition,          // ポジションオープン
-    ClosePosition,         // ポジションクローズ（このときだけ、損益計算する）
-    OverPosition,       // ポジション以上の反対売買。別途分割して処理する。
-    ExpireOrder,        // 期限切れ
-    Liquidation,        // 精算
-    PostOnly,           // 指値不成立。
-    NoMoney,            //　証拠金不足（オーダできず）
-    Error,              // その他エラー（基本的には発生させない）
+    Wait,          // 処理中
+    InOrder,       // オーダー中
+    OrderComplete, // tempolary status.
+    OpenPosition,  // ポジションオープン
+    ClosePosition, // ポジションクローズ（このときだけ、損益計算する）
+    OverPosition,  // ポジション以上の反対売買。別途分割して処理する。
+    ExpireOrder,   // 期限切れ
+    Liquidation,   // 精算
+    PostOnlyError, // 指値不成立。
+    NoMoney,       //　証拠金不足（オーダできず）
+    Error,         // その他エラー（基本的には発生させない）
+}
+
+impl OrderStatus {
+    pub fn to_string(&self) -> String {
+        match self {
+            OrderStatus::NoAction => "NoAction".to_string(),
+            OrderStatus::Wait => "Wait".to_string(),                 // 処理中
+            OrderStatus::InOrder => "InOrder".to_string(),           // オーダー中
+            OrderStatus::OrderComplete => "Complete".to_string(),    // tempolary status.
+            OrderStatus::OpenPosition => "Open".to_string(),         // ポジションオープン
+            OrderStatus::ClosePosition => "Close".to_string(),         // ポジションクローズ（このときだけ、損益計算する）
+            OrderStatus::OverPosition => "OverPosition".to_string(), // ポジション以上の反対売買。別途分割して処理する。
+            OrderStatus::ExpireOrder => "Expire".to_string(),        // 期限切れ
+            OrderStatus::Liquidation => "Liquid".to_string(),        // 精算
+            OrderStatus::PostOnlyError => "PostError".to_string(),   // 指値不成立。
+            OrderStatus::NoMoney => "NoMoney".to_string(),           //　証拠金不足（オーダできず）
+            OrderStatus::Error => "Error".to_string(),               // その他エラー（基本的には発生させない）
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct OrderResult {
     pub timestamp: i64,
     pub order_id: String,
-    pub order_sub_id: i32,       // 分割された場合に利用
+    pub order_sub_id: i32, // 分割された場合に利用
     pub order_type: OrderType,
     pub post_only: bool,
     pub create_time: i64,
     pub status: OrderStatus,
     pub open_price: f64,
     pub close_price: f64,
-    pub size: f64, // in usd
+    pub size: f64,   // in usd
     pub volume: f64, //in BTC
     pub profit: f64,
     pub fee: f64,
@@ -68,11 +98,7 @@ pub struct OrderResult {
 }
 
 impl OrderResult {
-    pub fn from_order(
-        timestamp: i64,
-        order: &Order,
-        status: OrderStatus,
-    ) -> Self {
+    pub fn from_order(timestamp: i64, order: &Order, status: OrderStatus) -> Self {
         return OrderResult {
             timestamp: timestamp,
             order_id: order.order_id.clone(),
@@ -100,7 +126,8 @@ impl OrderResult {
     /// 子供のオーダについては、sub_idが１インクリメントする。
     /// 分けられない場合(境界が大きすぎる） NoActionが返る。
     pub fn split_child(&mut self, size: f64) -> Result<OrderResult, OrderStatus> {
-        if self.size < size {     // do nothing.
+        if self.size < size {
+            // do nothing.
             return Err(OrderStatus::NoAction);
         }
 
@@ -109,7 +136,7 @@ impl OrderResult {
         child.order_sub_id = self.order_sub_id + 1;
         child.size = self.size - size;
         child.update_volume_with_open_price();
-        
+
         self.size = size;
         self.volume = self.size / self.volume;
         self.update_volume_with_open_price();
@@ -258,12 +285,10 @@ impl Orders {
             if self.q[i].valid_until < current_time_ms {
                 let order = self.q.remove(i);
 
-                let close_order = OrderResult::from_order(
-                    current_time_ms,
-                    &order,
-                    OrderStatus::ExpireOrder);
+                let close_order =
+                    OrderResult::from_order(current_time_ms, &order, OrderStatus::ExpireOrder);
 
-                    println!("Order expire {:?}", close_order);
+                println!("Order expire {:?}", close_order);
 
                 return Ok(close_order);
             }
@@ -310,10 +335,11 @@ impl Orders {
         // 順番に価格条件をみたしたものから約定したこととし、remain_sizeをへらしていく。
         for i in 0..l {
             if ((self.buy_queue == true) && (price  < self.q[i].price))          // Buy Case
-                || ((self.buy_queue == false) && (self.q[i].price < price))      // Sell case
+                || ((self.buy_queue == false) && (self.q[i].price < price))
+            // Sell case
             {
                 if self.q[i].remain_size <= size_remain {
-                    complete_order = true;                    
+                    complete_order = true;
                     size_remain -= self.q[i].remain_size;
                     self.q[i].remain_size = 0.0;
                 } else {
@@ -322,8 +348,7 @@ impl Orders {
 
                     break;
                 }
-            }
-            else {
+            } else {
                 // ソートされているので全件検索は不要。
                 break;
             }
@@ -341,10 +366,8 @@ impl Orders {
             if self.q[i].remain_size <= 0.0 {
                 let order = &self.q.remove(i);
 
-                let close_order = OrderResult::from_order(
-                    current_time_ms,
-                    &order,
-                    OrderStatus::OrderComplete);
+                let close_order =
+                    OrderResult::from_order(current_time_ms, &order, OrderStatus::OrderComplete);
 
                 return Ok(close_order);
             }
@@ -381,14 +404,22 @@ mod OrderTypeTest {
 }
 
 #[cfg(test)]
-mod ClosedOrderTest{
+mod ClosedOrderTest {
     use super::*;
 
-    #[test] 
-    fn test_ClosedOrder (){
+    #[test]
+    fn test_ClosedOrder() {
         // 101を51(指定サイズ:Self側）と51（新規）に分割するテスト
-        let order = Order::new(1, "close".to_string(), 
-        OrderType::Buy, true, 100, 100.1, 101.0, false);
+        let order = Order::new(
+            1,
+            "close".to_string(),
+            OrderType::Buy,
+            true,
+            100,
+            100.1,
+            101.0,
+            false,
+        );
 
         let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
         assert_eq!(close_order.size, 101.0);
@@ -396,12 +427,11 @@ mod ClosedOrderTest{
         println!("{:?}", close_order);
         let result = &close_order.split_child(50.0).unwrap();
         assert_eq!(close_order.size, 50.0);
-        assert_eq!(result.size, 51.0);        
+        assert_eq!(result.size, 51.0);
         println!("{:?}", close_order);
         println!("{:?}", result);
     }
 }
-
 
 #[cfg(test)]
 fn make_orders(buy_order: bool) -> Orders {
@@ -421,7 +451,8 @@ fn make_orders(buy_order: bool) -> Orders {
     let o2 = Order::new(
         3,
         "low price but later".to_string(),
-        OrderType::Buy, false,
+        OrderType::Buy,
+        false,
         200,
         100.0,
         50.0,
@@ -430,7 +461,8 @@ fn make_orders(buy_order: bool) -> Orders {
     let o3 = Order::new(
         2,
         "high price".to_string(),
-        OrderType::Buy, false,
+        OrderType::Buy,
+        false,
         300,
         200.0,
         200.0,
@@ -439,7 +471,8 @@ fn make_orders(buy_order: bool) -> Orders {
     let o4 = Order::new(
         1,
         "high price but first".to_string(),
-        OrderType::Buy, false,
+        OrderType::Buy,
+        false,
         400,
         200.0,
         50.0,

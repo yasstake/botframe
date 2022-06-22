@@ -1,5 +1,6 @@
 use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
+use pyo3::ffi::Py_SetRecursionLimit;
 use pyo3::prelude::*;
 // use pyo3::types::PyDateTime;
 // use pyo3::types::PyInt;
@@ -29,8 +30,8 @@ Python からよびださされるモジュール
 --- Agent
 
 class Agent:
-    def on_tick(self, session, time_ms)
-    def on_update(self, session, time_ms, id, sub_id, status, price, volume) // 後で実装
+    def on_tick(self, time_ms)
+    def on_update(self, time_ms, id, sub_id, status, price, volume) // 後で実装
 
 
 ---- Market(Session) API
@@ -102,7 +103,7 @@ impl DummyBb {
     // Market (Session) API
 
     fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()>{
-
+        
         Python::with_gil(|py| {
             let methods_list = agent.dir();
 
@@ -184,10 +185,34 @@ impl DummyBb {
                 if want_update && results.len() != 0 {
                     for r in results {
                         /*
-                        let args = PyTuple::new(py, [r.clock_time]);                        
-
-                        agent.call_method1("on_tick", args);                    
+                        pub timestamp: i64,
+                        pub order_id: String,
+                        pub order_sub_id: i32,       // 分割された場合に利用
+                        pub order_type: OrderType,
+                        pub post_only: bool,
+                        pub create_time: i64,
+                        pub status: OrderStatus,
+                        pub open_price: f64,
+                        pub close_price: f64,
+                        pub size: f64, // in usd
+                        pub volume: f64, //in BTC
+                        pub profit: f64,
+                        pub fee: f64,
+                        pub total_profit: f64,
                         */
+                        //let r2 = r.clone();
+                        
+                        // TODO: パラメータが多く面倒なのでJSONで返すまたは、配列で返す
+
+                        let args = (&r.timestamp, &r.order_id, r.order_sub_id);
+
+                        let result = PyOrderResult::from(r);
+                       
+                        let py_result = Py::new(py, result)?;
+                        let obj = py_result.to_object(py);
+
+                        let args = PyTuple::new(py, [&obj]);                        
+                        agent.call_method1("on_tick", args);                    
                     }
                 }
             }
@@ -231,13 +256,77 @@ impl DummyBb {
     }
 }
 
+use crate::exchange::order::OrderResult;
+use crate::exchange::order::OrderStatus;
+
+#[pyclass]
+pub struct PyOrderResult {
+    #[pyo3(get,set)]
+    pub timestamp: i64,
+    #[pyo3(get,set)]    
+    pub order_id: String,
+    #[pyo3(get,set)]    
+    pub order_sub_id: String, // 分割された場合に利用
+    #[pyo3(get,set)]    
+    pub order_type: String,
+    #[pyo3(get,set)]    
+    pub post_only: bool,
+    #[pyo3(get,set)]    
+    pub create_time: i64,
+    #[pyo3(get,set)]    
+    pub status: String,
+    #[pyo3(get,set)]
+    pub open_price: f64,
+    #[pyo3(get,set)]
+    pub close_price: f64,    
+    #[pyo3(get,set)]
+    pub size: f64,   // in usd
+    #[pyo3(get,set)]
+    pub volume: f64, //in BTC
+    #[pyo3(get,set)]    
+    pub profit: f64,
+    #[pyo3(get,set)]    
+    pub fee: f64,
+    #[pyo3(get,set)]    
+    pub total_profit: f64,
+}
+
+
+impl PyOrderResult {
+    fn from(result: &OrderResult) -> Self{
+        return PyOrderResult {
+            timestamp: result.timestamp,
+            order_id: result.order_id.clone(),
+            order_sub_id: result.order_sub_id.to_string(),
+            order_type: result.order_type.to_long_string(),
+            post_only: result.post_only,
+            create_time: result.create_time,
+            status: result.status.to_string(),
+            open_price: result.open_price,
+            close_price: result.close_price,
+            size: result.size,
+            volume: result.volume,
+            profit: result.profit,
+            fee: result.fee,
+            total_profit: result.total_profit
+        }
+    }
+}
+
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DummyBb>()?;
+    m.add_class::<PyOrderResult>()?;
 
     Ok(())
 }
+
+
+
+
+
 
 use crate::exchange::session::Session;
 
@@ -483,3 +572,4 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
 
 
 */
+
