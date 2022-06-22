@@ -1,5 +1,3 @@
-
-
 use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::prelude::*;
@@ -9,7 +7,6 @@ use pyo3::prelude::*;
 //use crate::polars::PyDataFrame;
 use ::polars::prelude::DataFrame;
 
-
 #[macro_use]
 extern crate anyhow;
 extern crate directories;
@@ -18,10 +15,9 @@ extern crate time;
 pub mod bb;
 pub mod exchange;
 
-use polars_lazy::prelude::*;
-use polars::prelude::Series;
 use chrono::NaiveDateTime;
-
+use polars::prelude::Series;
+use polars_lazy::prelude::*;
 
 // use pyo3::PyTryInto::try_into;
 
@@ -34,22 +30,32 @@ Python からよびださされるモジュール
 
 class Agent:
     def on_tick(self, session, time_ms)
-    def on_exec(self, session, time_ms, side, price, volume) // 後で実装
+    def on_update(self, session, time_ms, id, sub_id, status, price, volume) // 後で実装
 
 
----- Session API
-    session.run(agent, from, time_s)
+---- Market(Session) API
+    market.start_offset(from_h);
 
-    session.timestamp_ms
-    session.make_order(side, price, volume, duration)
+    market.run(agent, interval_sec)
 
-    // session.history あとで実装
-    session.ohlcv
-    session.balance
-    session.indicator(key, value)
-    // session.position あとで実装。まずは約定は重ねない。
+    market.timestamp_ms
+    market.make_order(side, price, volume, duration_s)
 
-    session.result
+    market.history
+    market.ohlcv
+
+    market.balance
+    market.indicator(key, value)
+    market.position
+
+    market.result  // あとで実装。
+
+
+--- Market (history API)
+    market.log_start_ms()
+    market.log_end_ms()
+    market.log_ohlcv
+
 
 
 ---- Main
@@ -60,9 +66,11 @@ class Agent:
 
     agent = Agent()
 
-    result = exchange.run(agent 10)
+    exchange.register_agent(agent)
 
-    print(result)
+    exchange.run(10)
+
+    print(exchange.history)
 
 */
 
@@ -72,7 +80,6 @@ use chrono::{DateTime, Utc};
 use numpy::IntoPyArray;
 use numpy::PyArray2;
 
-
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
@@ -80,45 +87,126 @@ struct DummyBb {
 
 use async_std::task;
 
+use polars_core::datatypes::AnyValue::Float64;
+
+use crate::exchange::order::OrderType;
+use polars::datatypes::TimeUnit;
+
 #[pymethods]
-impl DummyBb{
+impl DummyBb {
     #[new]
     fn new() -> Self {
-        return DummyBb {
-            market: Bb::new()
-        };
+        return DummyBb { market: Bb::new() };
+    }
+    //--------------------------------------------------------------------------------------------
+    // Market (Session) API
+
+    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()>{
+
+        Python::with_gil(|py| {
+            let methods_list = agent.dir();
+
+            let mut want_tick = false;
+            if methods_list.contains("on_tick").unwrap() {
+                println!("call back tick by {}[sec]", interval_sec);
+                want_tick = true;
+            }
+
+            let mut want_update = false;
+            if methods_list.contains("on_update").unwrap() {
+                println!("call back by update");
+                want_update = true;
+            }
+
+            let mut want_event = false;
+
+            if methods_list.contains("on_event").unwrap() {
+                println!("call back by all log events");
+                want_update = true;
+            }
+
+            if (want_tick == false) && (want_update == false) && (want_event == false) {
+                println!("method on_tick OR on_update OR on_event must be implementd")
+            }
+
+            let mut start_time_ms = self.market.start_time();
+            let end_time_ms = self.market.end_time();
+
+            let df = self.market.market.select_df(start_time_ms, end_time_ms);
+
+            let time_s = &df["time"];
+            let price_s = &df["price"];
+            let size_s = &df["size"];
+            let bs_s = &df["bs"];
+
+            let time = &time_s.i64().unwrap();
+            let price = price_s.f64().unwrap();
+            let size = size_s.f64().unwrap();
+            let bs = bs_s.utf8().unwrap();
+
+            let mut session = self.market.market.get_session();
+
+            for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
+                let time = t.unwrap();
+                let price = p.unwrap();
+                let size = s.unwrap();
+                let bs = b.unwrap();
+                println!("{:?} {:?} {:?} {:?}", time, price, size, bs);
+
+                // TODO: May skip wam up time
+
+                // call all event
+                if want_event {
+                    //let on_event: &PyAny = agent.get_item("on_event")?.into();
+                    let args = (time, bs, price, size);
+                    agent.call_method1("on_event", args);                    
+                    //on_event.call_method1(py, args)?;
+
+                    // agent.call_method(name, args, kwargs)
+                }
+
+                //let current_time = self.market.market
+                let current_time_ms = session.get_timestamp_ms();
+
+                let clock_time = time % 1_000 * 1_000;
+
+                if want_tick && (current_time_ms < clock_time) {
+                    let args = PyTuple::new(py, [clock_time]);
+                    agent.call_method1("on_tick", args);                    
+
+                    // call back tick
+                }
+
+                // update market
+                let results = session.main_exec_event(time, OrderType::from_str(bs), price, size);
+
+                //call back event update
+                if want_update && results.len() != 0 {
+                    for r in results {
+                        /*
+                        let args = PyTuple::new(py, [r.clock_time]);                        
+
+                        agent.call_method1("on_tick", args);                    
+                        */
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 
-    /*
-    fn new_session(&mut self) -> PyResult<Session> {
-        let session = Session{
-            balance: 0.0,
-            market: self.market.market.borrow(),
-            timestamp_ms:0
-        };
-
-        return Ok(session);
-    }
-    */
-
+    //--------------------------------------------------------------------------------------------
+    // Market History API
     // 過去ndays分のログをダウンロードしてロードする。
-    fn load_data(&mut self, ndays: usize) {
+    fn log_load(&mut self, ndays: usize) {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(
-                self.market.download_exec_log_ndays(ndays as i32)
-            );
+            .block_on(self.market.download_exec_log_ndays(ndays as i32));
     }
 
-    /*
-    fn create_session(&self) -> PyResult<Session> {
-        return Ok(Session::new());
-    }
-    */
-
-    fn ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+    fn log_ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
 
@@ -128,21 +216,20 @@ impl DummyBb{
         println!("{:?}", array);
 
         let py_array2: &PyArray2<f64> = array.into_pyarray(py);
-        
+
         return py_array2.to_owned();
     }
 
     #[getter]
-    fn get_start_time(&self) -> PyResult<i64> {
+    fn get_log_start_ms(&self) -> PyResult<i64> {
         return Ok(self.market.start_time());
     }
 
     #[getter]
-    fn get_end_time(&self) -> PyResult<i64> {
+    fn get_log_end_ms(&self) -> PyResult<i64> {
         return Ok(self.market.end_time());
     }
 }
-
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -154,10 +241,7 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
 
 use crate::exchange::session::Session;
 
-
 use crate::exchange::Market;
-
-
 
 ///------------------------------------------------------------------------
 /// TEST SECION
@@ -183,7 +267,6 @@ fn test_plugin_all() {
     */
 }
 
-
 use numpy::array;
 use numpy::PyArray1;
 
@@ -206,8 +289,7 @@ use pyo3::types::PyTuple;
 
 #[test]
 fn test_market_call() {
-    let code: &str = 
-r#"class Agent:
+    let code: &str = r#"class Agent:
     def __init__(self):
         pass
             
@@ -215,7 +297,6 @@ r#"class Agent:
         print("market")
         print(market.start_time)
 "#;
-
 
     Python::with_gil(|py| {
         let pymodule = PyModule::from_code(py, code, "", "").unwrap();
@@ -228,7 +309,6 @@ r#"class Agent:
 
         let args = PyTuple::new(py, &[bb]);
         let result = agent.call_method1("on_message", args).unwrap();
-
     })
 }
 
@@ -243,9 +323,9 @@ fn test_python_call() {
         println!("{}", df_any);
         println!("{}", df_any.get_type().name().unwrap());
 
-        let shape_any  = df_any.getattr("shape");
+        let shape_any = df_any.getattr("shape");
         println!("shape{:?}", shape_any);
-        
+
         let dirs = df_any.dir();
         println!("dir {}", dirs);
 
@@ -273,36 +353,36 @@ fn test_python_call() {
         let df_ptr = df_any.into_ptr();
 
         /*
-        unsafe {
-            let s = df_ptr.cast::<PyDataFrame>();
+                unsafe {
+                    let s = df_ptr.cast::<PyDataFrame>();
 
-            let shape = (*s).df.shape();
+                    let shape = (*s).df.shape();
 
-            println!("Data Shape={} {}", shape.0, shape.1);
-        }
+                    println!("Data Shape={} {}", shape.0, shape.1);
+                }
 
 
-        let b = df_any.is_instance_of::<PyDataFrame>().unwrap();
-        println!("Instance is PyDataFrame {}", b);
+                let b = df_any.is_instance_of::<PyDataFrame>().unwrap();
+                println!("Instance is PyDataFrame {}", b);
 
-        //let df: &PyDataFrame = df_any.try_into_exact().unwrap();
+                //let df: &PyDataFrame = df_any.try_into_exact().unwrap();
 
-        //let b = df_any.is_instance_of::<DataFrame>().unwrap();
-        //println!("Instance is DataFrame {}", b);
+                //let b = df_any.is_instance_of::<DataFrame>().unwrap();
+                //println!("Instance is DataFrame {}", b);
 
-        //df_any.cast_as::<PyDataFrame>();
+                //df_any.cast_as::<PyDataFrame>();
 
-        //let d = df_any.downcast::<PyDataFrame>().unwrap();
-        // let d: &DataFrame = df_any.try_into().unwrap();
+                //let d = df_any.downcast::<PyDataFrame>().unwrap();
+                // let d: &DataFrame = df_any.try_into().unwrap();
 
-        //        println!("{}", d);
+                //        println!("{}", d);
 
-        // let my_df: Py<PyDataFrame> = pyo3::PyTryInto::try_into(&df_any, py);
+                // let my_df: Py<PyDataFrame> = pyo3::PyTryInto::try_into(&df_any, py);
 
-        let df_py: PyRef<PyDataFrame> = df_any.extract().unwrap();
+                let df_py: PyRef<PyDataFrame> = df_any.extract().unwrap();
 
-        //        println!("{}", df_py.);
-*/        
+                //        println!("{}", df_py.);
+        */
     })
 }
 
@@ -323,11 +403,8 @@ fn test_python_method_search() {
                 print("other")
         "#;
 
-
     Python::with_gil(|py| {
         let result = PyModule::from_code(py, pyscript, "test.py", "test");
-
-
 
         /*
         let polars = py.import("polars").unwrap();
@@ -344,11 +421,7 @@ fn test_python_method_search() {
         let r = df_any.get_type().call_method0("max").unwrap();
         println!("{}", r);
         */
-    }
-    );
-
-
-
+    });
 }
 
 /*

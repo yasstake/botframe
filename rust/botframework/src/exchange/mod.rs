@@ -2,6 +2,7 @@
 use chrono::NaiveDateTime;
 
 use ndarray::Data;
+use polars::prelude::ChunkApply;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
@@ -148,13 +149,14 @@ pub trait MarketInfo {
     fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
     fn start_time(&self) -> i64;
     fn end_time(&self) -> i64;
-    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64);
+    fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64);
 }
 
 pub struct Market {
     // Use DataFrame
     trade_history: DataFrame,
     trade_buffer: TradeBlock,
+    session: SessionValue
 }
 
 impl Market {
@@ -163,6 +165,7 @@ impl Market {
         return Market {
             trade_history: trade_block.to_data_frame(),
             trade_buffer: TradeBlock::new(),
+            session: SessionValue::new()
         };
     }
 
@@ -200,6 +203,7 @@ impl Market {
         self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
     }
 
+    // TODO: ms -> ns?
     pub fn select_df(&mut self, mut start_time_ms: i64, mut end_time_ms: i64) -> DataFrame {
         if start_time_ms == 0 {
             start_time_ms = self.start_time();
@@ -223,9 +227,14 @@ impl Market {
     pub fn _print_tail_history(&mut self) {
         println!("{}", self.trade_history.tail(Some(5)));
     }
+
+    pub fn get_session(&mut self) -> &mut SessionValue {
+        return &mut self.session;
+    }
 }
 
 use polars::prelude::Float64Type;
+use polars::prelude::TemporalMethods;
 use polars_lazy::dsl::IntoLazy;
 use polars_lazy::prelude::col;
 
@@ -268,13 +277,24 @@ impl MarketInfo for Market {
         return time_s.max().unwrap();
     }
 
-    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64) {
-        let df = self.select_df(start_time_ns, end_time_ns);
-        let l = df.height();
-
-        // TODO: may be slow?
-        for i in 0..l {
-            let row = df.get_row(i);
+    fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64) {
+        let df = self.select_df(start_time_ms, end_time_ms);
+    
+        let time_s = &df["time"];
+        let price_s = &df["price"];
+        let size_s = &df["size"];
+        let bs_s = &df["bs"];
+    
+        let time = &time_s.timestamp(TimeUnit::Milliseconds).unwrap();
+        let price =  price_s.f64().unwrap();
+        let size = size_s.f64().unwrap();
+        let bs = bs_s.utf8().unwrap();
+    
+        let  z =  time.into_iter().zip(price).zip(size).zip(bs);
+    
+        for (((t, p), s), b)  in z {
+            call_back(t.unwrap(), b.unwrap(), p.unwrap(), s.unwrap());
+            //println!("{:?} {:?} {:?} {:?}", t.unwrap(), p.unwrap(), s.unwrap(), b.unwrap());
         }
     }
 
@@ -494,4 +514,96 @@ fn test_to_data_frame() {
     println!("{}", tb.id.len());
 
     let _tb = tb.to_data_frame();
+}
+
+use polars::prelude::DataType;
+use polars::prelude::TimeUnit;
+
+use self::session::SessionValue;
+
+#[test]
+fn test_df_loop () {
+    let mut market = Market::new();
+
+    for i in 0..3000000 {
+        let trade = Trade {
+            time_ns: 10000 * i,
+            price: 1.0,
+            size: 1.1,
+            bs: OrderType::Buy.to_str().to_string(),
+            id: "asdfasf".to_string(),
+        };
+
+        market.append_trade(&trade);
+    }
+    market.flush_add_trade();
+
+
+    let start_time_ms = market.start_time() + 10 * 1_000;
+    let end_time_ms = market.end_time();
+
+    let df = market.select_df(start_time_ms, end_time_ms);
+    let l = df.height();
+
+    let time_s = &df["time"];
+    let price_s = &df["price"];
+    let size_s = &df["size"];
+    let bs_s = &df["bs"];
+
+    println!("dfsize= {}", l);
+
+    let time = &time_s.timestamp(TimeUnit::Milliseconds).unwrap();
+    let price =  price_s.f64().unwrap();
+    let size = size_s.f64().unwrap();
+    let bs = bs_s.utf8().unwrap();
+
+    time.into_iter().map(|f| {println!("{}", f.unwrap());});
+
+    
+//    price.into_iter().map(|f| {println!("{}", f.unwrap());});            
+
+    price.into_iter().map(|f|{ println!("{:?}", f);} );
+
+
+    let  z =  time.into_iter().zip(price).zip(size).zip(bs);
+
+    for (((t, p), s), b)  in z {
+        println!("{:?} {:?} {:?} {:?}", t.unwrap(), p.unwrap(), s.unwrap(), b.unwrap());
+        break;
+    }
+
+
+
+
+    //time.into_iter().zip(price.into_iter()).zip(size.into_iter());
+
+
+    match (time_s.dtype(), price_s.dtype(), size_s.dtype()) {
+        (DataType::Datetime(TimeUnit::Milliseconds, None),  DataType::Float64, DataType::Float64) => {
+            let time = time_s.timestamp(TimeUnit::Milliseconds).unwrap();
+            let price =  price_s.f64().unwrap();
+            let size = size_s.f64().unwrap();
+
+            //println!("{:?}", time);
+            //println!("{:?}", price);
+            //println!("{:?}", size);            
+
+
+            // time.into_iter().map(|f| {println!("{}", f.unwrap());});
+
+            price.into_iter().map(|f| {println!("{}", f.unwrap());});            
+
+            time.into_iter().zip(price.into_iter()).zip(size.into_iter())
+            .map(|f| {println!("{:?}", f); });
+
+        }
+        _ => {
+            println!("err {:?}, {:?}, {:?}", time_s.dtype(), price_s.dtype(), size_s.dtype());
+            assert!(false, "illeagaltype")
+        }
+    }
+
+
+
+
 }

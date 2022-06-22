@@ -257,7 +257,6 @@ pub struct Indicator {
 pub struct SessionValue {
     _session_id: String,
     _order_index: i64,
-    _start_offset: i64,
     sell_board_edge_price: f64,
     buy_board_edge_price: f64,
     current_time_ms: i64,
@@ -265,16 +264,16 @@ pub struct SessionValue {
     short_orders: Orders,
     positions: Positions,
     order_history: Vec<OrderResult>,
+    tick_order_history: Vec<OrderResult>,
     indicators: Vec<Indicator>,
     wallet_balance: f64, // 入金額
 }
 
 impl SessionValue {
-    fn new(start_offset: i64) -> Self {
+    pub fn new() -> Self {
         return SessionValue {
             _session_id: "0000".to_string(), // TODO: implemnet multisession
             _order_index: 0,
-            _start_offset: start_offset,
             sell_board_edge_price: 0.0,
             buy_board_edge_price: 0.0,
             current_time_ms: 0,
@@ -282,6 +281,7 @@ impl SessionValue {
             short_orders: Orders::new(false),
             positions: Positions::new(),
             order_history: vec![],
+            tick_order_history: vec![],
             indicators: vec![],
             wallet_balance: 0.0,
         };
@@ -458,56 +458,63 @@ impl SessionValue {
             }
         }
 
-        /*
-        match &mut self.positions.update_position(order_result) {
-            Ok(()) => {
-                self.log_order_result(&order_result);
-                return Ok(());
-            }
-            Err(e) => {
-                match e {
-                    OrderStatus::OverPosition => {
-                        // こわけする
-                        match self.positions.split_order(order_result) {
-                            Ok(mut child_order) => {
-                                let r = self.positions.update_position(order_result);
-                                if r.is_err() {
-                                    println!("OpenPositionError {:?}", r);
-                                }
-
-                                let r = self.positions.update_position(&mut child_order);
-                                if r.is_err() {
-                                    println!("OpenPositionError {:?}", r);
-                                }
-
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                println!("Split error {:?}", e);
-                                return Err(e);
-                            }
-                        }
-                    }
-                    _ => {
-                        // TODO　ここにはこないはず。
-                        println!("ERR {:?}", e);
-                        return Err(OrderStatus::Error);
-                    }
-                }
-            }
-        }
-        */
 
     }
 
+
+    // order_resultのログを蓄積する（オンメモリ）
+    // ログオブジェクトは配列にいれるためClone する。
+    // TODO: この中でAgentへコールバックできるか調査
+    fn log_order_result(&mut self, order: &OrderResult) {
+        let mut order_result = order.clone();
+        order_result.timestamp = self.current_time_ms;
+
+        Self::calc_profit(&mut order_result);
+
+        let tick_result = order_result.clone();
+        self.order_history.push(order_result);
+        self.tick_order_history.push(tick_result);
+    }
+
+    // トータルだけ損益を計算する。
+    // log_order_resultの中で計算している。
+    // TODO: もっと上位で設定をかえられるようにする。
+    // MaketとTakerでも両率を変更する。
+    fn calc_profit(order: &mut OrderResult) {
+        order.fee = order.size * 0.0006;
+        order.total_profit = order.profit - order.fee;
+    }
+}
+
+
+
+pub trait Session {
+    fn get_timestamp_ms(&self) -> i64;
+    fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>;
+    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus>; 
+
+    /*
+    fn get_active_orders(&self) -> [Order];
+    fn get_posision(&self) -> (Position, Position); // long/short
+    fn diposit(&self, balance: f64);
+    fn get_balance(&self) -> f64;
+    fn get_avairable_balance(&self) -> f64;
+    fn set_indicator(&self, key: &str, value: f64); // TODO: implement later
+    fn result() -> String; // evaluate session result
+    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) -> SessionEventType;
+    */
+    // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
+}
+
+impl Session for SessionValue {
+    fn get_timestamp_ms(&self) -> i64 {
+        return self.current_time_ms;
+    }
+
     /* TODO: マージンの計算とFundingRate計算はあとまわし */
-    fn main_exec_event(
-        &mut self,
-        current_time_ms: i64,
-        order_type: OrderType,
-        price: f64,
-        size: f64,
-    ) {
+    fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>{
+        self.tick_order_history.clear();
+
         self.exec_event_update_time(current_time_ms, order_type, price, size);
         //  0. AgentへTick更新イベントを発生させる。
         //  1. 時刻のUpdate
@@ -515,7 +522,7 @@ impl SessionValue {
         //　売り買いの約定が発生していないときは未初期化のためリターン
         // （なにもしない）
         if self.buy_board_edge_price == 0.0 || self.buy_board_edge_price == 0.0 {
-            return;
+            return &self.tick_order_history;
         }
 
         // 　2. オーダ中のオーダーを更新する。
@@ -549,6 +556,8 @@ impl SessionValue {
                 }
             }
         }
+
+        return &self.tick_order_history;
     }
 
     /// オーダー作りオーダーリストへ追加する。
@@ -578,6 +587,9 @@ impl SessionValue {
             size,
             false,
         );
+
+        // TODO: enqueue の段階でログに出力する。
+
         match side {
             OrderType::Buy => {
                 // TODO: Takerになるかどうか確認
@@ -596,55 +608,6 @@ impl SessionValue {
         return Err(OrderStatus::Error);
     }
 
-    // order_resultのログを蓄積する（オンメモリ）
-    // ログオブジェクトは配列にいれるためClone する。
-    // TODO: この中でAgentへコールバックできるか調査
-    fn log_order_result(&mut self, order: &OrderResult) {
-        let mut order_result = order.clone();
-        order_result.timestamp = self.current_time_ms;
-
-        Self::calc_profit(&mut order_result);
-
-        self.order_history.push(order_result);
-    }
-
-    // トータルだけ損益を計算する。
-    // log_order_resultの中で計算している。
-    // TODO: もっと上位で設定をかえられるようにする。
-    // MaketとTakerでも両率を変更する。
-    fn calc_profit(order: &mut OrderResult) {
-        order.fee = order.size * 0.0006;
-        order.total_profit = order.profit - order.fee;
-    }
-}
-
-pub trait Agent {
-    fn on_tick(&self, session: &Market, time_ms: i64);
-    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64);
-    fn on_order(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64);
-}
-
-pub trait Session {
-    fn get_timestamp_ms(&self) -> i64;
-    //    fn make_order(&self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> OrderStatus;
-    /*
-    fn get_active_orders(&self) -> [Order];
-    fn get_posision(&self) -> (Position, Position); // long/short
-    fn diposit(&self, balance: f64);
-    fn get_balance(&self) -> f64;
-    fn get_avairable_balance(&self) -> f64;
-    fn set_indicator(&self, key: &str, value: f64); // TODO: implement later
-    fn result() -> String; // evaluate session result
-    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) -> SessionEventType;
-    */
-    // fn run(&self, agent: &dyn Agent, from_time_ms: i64, time_interval_ms: i64) -> bool;
-    // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
-}
-
-impl Session for SessionValue {
-    fn get_timestamp_ms(&self) -> i64 {
-        return self.current_time_ms;
-    }
 
     /*
         fn make_order(&self, side: &str, price: f64, volume: f64, duration_ms: i64) -> Order;
@@ -883,12 +846,12 @@ mod TestSessionValue {
     use super::*;
     #[test]
     fn test_new() {
-        let session = SessionValue::new(1);
+        let session = SessionValue::new();
     }
 
     #[test]
     fn test_SessionValue() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
 
         // IDの生成テスト
         // self.generate_id
@@ -914,14 +877,14 @@ mod TestSessionValue {
 
     #[test]
     fn test_avariable_balance() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
         let balnace = session.get_avairable_balance();
         println!("balance = {}", balnace);
     }
 
     #[test]
     fn test_event_update_time() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
         assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
 
         session.exec_event_update_time(123, OrderType::Buy, 101.0, 10.0);
@@ -938,7 +901,7 @@ mod TestSessionValue {
 
     #[test]
     fn test_exec_event_execute_order0() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
 
         session.make_order(OrderType::Buy, 50.0, 10.0, 100);
         println!("{:?}", session.long_orders);
@@ -956,7 +919,7 @@ mod TestSessionValue {
 
     #[test]
     fn test_update_position() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
 
         // 新規にポジション作る（ロング）
         session.make_order(OrderType::Buy, 50.0, 10.0, 100);
@@ -1012,7 +975,7 @@ mod TestSessionValue {
 
     #[test]
     fn test_exec_event_execute_order() {
-        let mut session = SessionValue::new(1);
+        let mut session = SessionValue::new();
         assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
 
         // Warm Up

@@ -66,8 +66,8 @@ impl MarketInfo for Bb {
         return self.market.end_time();
     }
 
-    fn for_each(&mut self, agent: &dyn MaketAgent, start_time_ns: i64, end_time_ns: i64){
-        self.market.for_each(agent, start_time_ns, end_time_ns);
+    fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64){
+        self.market.for_each(call_back, start_time_ms, end_time_ms);
     }
 }
 
