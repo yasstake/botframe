@@ -1,4 +1,3 @@
-
 use chrono::NaiveDateTime;
 
 use ndarray::Data;
@@ -12,16 +11,15 @@ use polars::prelude::SortOptions;
 // pub const BUY: &str = "B";
 // pub const SELL: &str = "S";
 
-pub mod session;
 pub mod order;
-
+pub mod session;
 
 #[derive(Debug)]
 pub struct Trade {
     pub time_ns: i64,
     pub price: f64,
     pub size: f64,
-    pub bs: String,         // 本来はOrderTypeで実装するべきだが、Porlarsへいれるため汎用形のStringを採用。
+    pub bs: String, // 本来はOrderTypeで実装するべきだが、Porlarsへいれるため汎用形のStringを採用。
     pub id: String,
 }
 
@@ -65,7 +63,7 @@ impl TradeBlock {
         let av: Vec<NaiveDateTime> = self
             .time_ns
             .iter()
-            .map(|x| NaiveDateTime::from_timestamp(*x/1_000_000, (*x%1_000_000)as u32))
+            .map(|x| NaiveDateTime::from_timestamp(*x / 1_000_000, (*x % 1_000_000) as u32))
             .collect();
 
         let time = Series::new("time", av);
@@ -91,34 +89,64 @@ pub fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFr
     return df;
 }
 
-
-pub fn ohlcv_df_from_raw(df: &DataFrame, mut current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
+pub fn ohlcv_df_from_raw(
+    df: &DataFrame,
+    mut current_time_ms: i64,
+    width_sec: i64,
+    count: i64,
+) -> DataFrame {
     if current_time_ms <= 0 {
         current_time_ms = df.column("time").unwrap().max().unwrap();
     }
 
     let width_ms = width_sec * 1_000;
 
-    let start_time_ms = ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64));
+    let start_time_ms = if count != 0 {
+        ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64))
+    } else {
+        df.column("time").unwrap().min().unwrap()
+    };
     let end_time_ms = current_time_ms;
 
     return ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
 }
 
-fn ohlcv_from_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64, width_sec: i64) -> DataFrame {
+pub fn ohlcv_df_from_ohlc(
+    df: &DataFrame,
+    mut current_time_ms: i64,
+    width_sec: i64,
+    count: i64,
+) -> DataFrame {
+    if current_time_ms <= 0 {
+        current_time_ms = df.column("time").unwrap().max().unwrap();
+    }
+
+    let width_ms = width_sec * 1_000;
+
+    let start_time_ms = if count != 0 {
+        ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64))
+    } else {
+        df.column("time").unwrap().min().unwrap()
+    };
+    let end_time_ms = current_time_ms;
+
+    return ohlcv_from_ohlcv(df, start_time_ms, end_time_ms, width_sec);
+}
+
+fn ohlcv_from_df(
+    df: &DataFrame,
+    start_time_ms: i64,
+    end_time_ms: i64,
+    width_sec: i64,
+) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
     let t = df.column("time").unwrap();
-    
-    let vec_t:Vec<NaiveDateTime> = 
-        t
+
+    let vec_t: Vec<NaiveDateTime> = t
         .datetime()
         .expect("Type Error")
         .into_iter()
-        .map(|x|
-             (
-                NaiveDateTime::from_timestamp((x.unwrap()/1_000/width_sec) * width_sec, 0)
-            )
-        )
+        .map(|x| (NaiveDateTime::from_timestamp((x.unwrap() / 1_000 / width_sec) * width_sec, 0)))
         .collect();
 
     let new_t: Series = Series::new("time_slot", vec_t);
@@ -136,13 +164,62 @@ fn ohlcv_from_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64, width_sec
             col("price").last().alias("close"),
             col("size").sum().alias("vol"),
         ])
-        .sort("time", SortOptions{descending:true, nulls_last:false})
+        .sort(
+            "time",
+            SortOptions {
+                descending: true,
+                nulls_last: false,
+            },
+        )
         .collect()
         .unwrap();
 
     return df;
 }
 
+fn ohlcv_from_ohlcv(
+    df: &DataFrame,
+    start_time_ms: i64,
+    end_time_ms: i64,
+    width_sec: i64,
+) -> DataFrame {
+    let mut df = select_df(df, start_time_ms, end_time_ms);
+    let t = df.column("time").unwrap();
+
+    let vec_t: Vec<NaiveDateTime> = t
+        .datetime()
+        .expect("Type Error")
+        .into_iter()
+        .map(|x| (NaiveDateTime::from_timestamp((x.unwrap() / 1_000 / width_sec) * width_sec, 0)))
+        .collect();
+
+    let new_t: Series = Series::new("time_slot", vec_t);
+
+    df.replace("time", new_t);
+
+    let df = df.lazy();
+
+    let df = df
+        .groupby([col("time")])
+        .agg([
+            col("open").first().alias("open"),
+            col("high").max().alias("high"),
+            col("low").min().alias("low"),
+            col("close").last().alias("close"),
+            col("vol").sum().alias("vol"),
+        ])
+        .sort(
+            "time",
+            SortOptions {
+                descending: true,
+                nulls_last: false,
+            },
+        )
+        .collect()
+        .unwrap();
+
+    return df;
+}
 
 pub trait MaketAgent {
     fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
@@ -153,14 +230,19 @@ pub trait MarketInfo {
     fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
     fn start_time(&self) -> i64;
     fn end_time(&self) -> i64;
-    fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64);
+    fn for_each(
+        &mut self,
+        call_back: fn(time: i64, kind: &str, price: f64, size: f64),
+        start_time_ms: i64,
+        end_time_ms: i64,
+    );
 }
 
 pub struct Market {
     // Use DataFrame
     trade_history: DataFrame,
     trade_buffer: TradeBlock,
-    session: SessionValue
+    session: SessionValue,
 }
 
 impl Market {
@@ -169,7 +251,7 @@ impl Market {
         return Market {
             trade_history: trade_block.to_data_frame(),
             trade_buffer: TradeBlock::new(),
-            session: SessionValue::new()
+            session: SessionValue::new(),
         };
     }
 
@@ -220,7 +302,7 @@ impl Market {
         } else if end_time_ms < 0 {
             end_time_ms = self.end_time() + end_time_ms
         }
-        
+
         return select_df(&self._df(), start_time_ms, end_time_ms);
     }
 
@@ -243,8 +325,6 @@ use polars_lazy::dsl::IntoLazy;
 use polars_lazy::prelude::col;
 
 use polars::chunked_array::comparison::*;
-
-
 
 impl MarketInfo for Market {
     fn _df(&mut self) -> DataFrame {
@@ -275,41 +355,38 @@ impl MarketInfo for Market {
         return time_s.min().unwrap();
     }
 
-    // TODO: error handling calling before data load    
+    // TODO: error handling calling before data load
     fn end_time(&self) -> i64 {
         let time_s = self.trade_history.column("time").unwrap();
         return time_s.max().unwrap();
     }
 
-    fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64) {
+    fn for_each(
+        &mut self,
+        call_back: fn(time: i64, kind: &str, price: f64, size: f64),
+        start_time_ms: i64,
+        end_time_ms: i64,
+    ) {
         let df = self.select_df(start_time_ms, end_time_ms);
-    
+
         let time_s = &df["time"];
         let price_s = &df["price"];
         let size_s = &df["size"];
         let bs_s = &df["bs"];
-    
+
         let time = &time_s.timestamp(TimeUnit::Milliseconds).unwrap();
-        let price =  price_s.f64().unwrap();
+        let price = price_s.f64().unwrap();
         let size = size_s.f64().unwrap();
         let bs = bs_s.utf8().unwrap();
-    
-        let  z =  time.into_iter().zip(price).zip(size).zip(bs);
-    
-        for (((t, p), s), b)  in z {
+
+        let z = time.into_iter().zip(price).zip(size).zip(bs);
+
+        for (((t, p), s), b) in z {
             call_back(t.unwrap(), b.unwrap(), p.unwrap(), s.unwrap());
             //println!("{:?} {:?} {:?} {:?}", t.unwrap(), p.unwrap(), s.unwrap(), b.unwrap());
         }
     }
-
 }
-
-
-
-
-
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 ///    TEST SECION
@@ -317,7 +394,6 @@ impl MarketInfo for Market {
 
 #[cfg(test)]
 use order::OrderType;
-
 
 #[test]
 fn test_history_size_and_dupe_load() {
@@ -399,20 +475,20 @@ fn test_make_history() {
     }
     market.flush_add_trade();
 
-    //market._print_head_history();    
+    //market._print_head_history();
     //market._print_tail_history();
 
     assert_eq!(market.history_size(), 3_000_000);
 
     assert_eq!(market.start_time(), 0);
-    assert_eq!(market.end_time(), 2_999_999*1_000);   // time is in msec 
+    assert_eq!(market.end_time(), 2_999_999 * 1_000); // time is in msec
 }
 
 #[test]
 fn test_df_select() {
     let mut market = Market::new();
 
-    for i in 0..(24*60*60) {
+    for i in 0..(24 * 60 * 60) {
         let trade = Trade {
             time_ns: i * 1_000_000,
             price: 1.0,
@@ -425,7 +501,7 @@ fn test_df_select() {
     }
     market.flush_add_trade();
 
-    market._print_head_history();    
+    market._print_head_history();
     market._print_tail_history();
 
     let df = market.select_df(1, 999);
@@ -466,7 +542,7 @@ fn test_make_olhc() {
 
     let df = ohlcv_df_from_raw(&m.trade_history, last_time, 120, 1000);
     println!("{}", df.head(Some(12)));
-    println!("120TOTAL={}", df.sum());    
+    println!("120TOTAL={}", df.sum());
 
     let df = ohlcv_df_from_raw(&m.trade_history, last_time, 10, 1000);
     println!("{}", df.head(Some(12)));
@@ -478,7 +554,46 @@ fn test_make_olhc() {
 
     let array = m._ohlcv(last_time, 5, 1000);
     println!("{}", array);
+}
 
+#[test]
+fn test_make_ohlcv_from_ohlcv() {
+    let mut m = load_dummy_data();
+
+    let start_time = m.start_time();
+    println!("start_time {}", start_time);
+    let last_time = m.end_time();
+    println!("end_time {}", last_time);
+
+    let rec_no = m.history_size();
+    println!("hisorysize={}", rec_no);
+
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 60, 1000);
+    println!("{}", df.head(Some(12)));
+
+    let df2 = ohlcv_from_ohlcv(&df, start_time, last_time, 120);
+    println!("{:?}", df2.head(Some(12)));
+
+    /*
+        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 2, 1000);
+        println!("{}", df.head(Some(12)));
+
+        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 120, 1000);
+        println!("{}", df.head(Some(12)));
+        println!("120TOTAL={}", df.sum());
+
+        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 10, 1000);
+        println!("{}", df.head(Some(12)));
+        println!("10TOTAL={}", df.sum());
+
+        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 5, 1000);
+        println!("{}", df.head(Some(12)));
+        println!("5TOTAL={}", df.sum());
+
+        let array = m._ohlcv(last_time, 5, 1000);
+        println!("{}", array);
+
+    */
 }
 
 #[test]
@@ -526,7 +641,7 @@ use polars::prelude::TimeUnit;
 use self::session::SessionValue;
 
 #[test]
-fn test_df_loop () {
+fn test_df_loop() {
     let mut market = Market::new();
 
     for i in 0..3000000 {
@@ -542,7 +657,6 @@ fn test_df_loop () {
     }
     market.flush_add_trade();
 
-
     let start_time_ms = market.start_time() + 10 * 1_000;
     let end_time_ms = market.end_time();
 
@@ -557,57 +671,70 @@ fn test_df_loop () {
     println!("dfsize= {}", l);
 
     let time = &time_s.timestamp(TimeUnit::Milliseconds).unwrap();
-    let price =  price_s.f64().unwrap();
+    let price = price_s.f64().unwrap();
     let size = size_s.f64().unwrap();
     let bs = bs_s.utf8().unwrap();
 
-    time.into_iter().map(|f| {println!("{}", f.unwrap());});
+    time.into_iter().map(|f| {
+        println!("{}", f.unwrap());
+    });
 
-    
-//    price.into_iter().map(|f| {println!("{}", f.unwrap());});            
+    //    price.into_iter().map(|f| {println!("{}", f.unwrap());});
 
-    price.into_iter().map(|f|{ println!("{:?}", f);} );
+    price.into_iter().map(|f| {
+        println!("{:?}", f);
+    });
 
+    let z = time.into_iter().zip(price).zip(size).zip(bs);
 
-    let  z =  time.into_iter().zip(price).zip(size).zip(bs);
-
-    for (((t, p), s), b)  in z {
-        println!("{:?} {:?} {:?} {:?}", t.unwrap(), p.unwrap(), s.unwrap(), b.unwrap());
+    for (((t, p), s), b) in z {
+        println!(
+            "{:?} {:?} {:?} {:?}",
+            t.unwrap(),
+            p.unwrap(),
+            s.unwrap(),
+            b.unwrap()
+        );
         break;
     }
 
-
-
-
     //time.into_iter().zip(price.into_iter()).zip(size.into_iter());
 
-
     match (time_s.dtype(), price_s.dtype(), size_s.dtype()) {
-        (DataType::Datetime(TimeUnit::Milliseconds, None),  DataType::Float64, DataType::Float64) => {
+        (
+            DataType::Datetime(TimeUnit::Milliseconds, None),
+            DataType::Float64,
+            DataType::Float64,
+        ) => {
             let time = time_s.timestamp(TimeUnit::Milliseconds).unwrap();
-            let price =  price_s.f64().unwrap();
+            let price = price_s.f64().unwrap();
             let size = size_s.f64().unwrap();
 
             //println!("{:?}", time);
             //println!("{:?}", price);
-            //println!("{:?}", size);            
-
+            //println!("{:?}", size);
 
             // time.into_iter().map(|f| {println!("{}", f.unwrap());});
 
-            price.into_iter().map(|f| {println!("{}", f.unwrap());});            
+            price.into_iter().map(|f| {
+                println!("{}", f.unwrap());
+            });
 
-            time.into_iter().zip(price.into_iter()).zip(size.into_iter())
-            .map(|f| {println!("{:?}", f); });
-
+            time.into_iter()
+                .zip(price.into_iter())
+                .zip(size.into_iter())
+                .map(|f| {
+                    println!("{:?}", f);
+                });
         }
         _ => {
-            println!("err {:?}, {:?}, {:?}", time_s.dtype(), price_s.dtype(), size_s.dtype());
+            println!(
+                "err {:?}, {:?}, {:?}",
+                time_s.dtype(),
+                price_s.dtype(),
+                size_s.dtype()
+            );
             assert!(false, "illeagaltype")
         }
     }
-
-
-
-
 }

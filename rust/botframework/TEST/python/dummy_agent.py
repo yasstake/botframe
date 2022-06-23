@@ -9,9 +9,10 @@ class DummyAgent:
 
     def on_tick(self, time_ms, market):
         #print("c", time_ms, market.current_time)
-        
+        print("start", time_ms)        
         # TODO: 出たーがなかったときの処理。
         market.ohlcv(60, 200)
+        print("end");                
         # print(market.log_start_ms)
         #ohlcv = bc.log_ohlcv(time_ms, 60, 100)
 

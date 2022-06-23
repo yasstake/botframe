@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use exchange::MarketInfo;
+use exchange::ohlcv_df_from_ohlc;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_SetRecursionLimit;
 use pyo3::prelude::*;
@@ -143,6 +144,7 @@ use crate::exchange::session::Positions;
 #[derive(Clone)]
 struct CopySession {
     df: DataFrame,
+    df_ohlcv: DataFrame,
     sell_board_edge_price: f64,
     buy_board_edge_price: f64,
     current_time_ms: i64,
@@ -153,9 +155,10 @@ struct CopySession {
 }
 
 impl CopySession {
-    fn from(s: &MainSession) -> Self {
+    fn from(s: &MainSession, ohlcv_df: &DataFrame) -> Self {
         return CopySession {
             df: s.df.clone(),
+            df_ohlcv: ohlcv_df.clone(),
             sell_board_edge_price: s.session.sell_board_edge_price,
             buy_board_edge_price: s.session.buy_board_edge_price,
             current_time_ms: s.session.current_time_ms,
@@ -209,6 +212,27 @@ impl CopySession {
     }
 
     fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+        let current_time_ms = self.get_current_time();
+        let gil = pyo3::Python::acquire_gil();
+        let py = gil.python();
+
+        let df = &self.df_ohlcv;
+
+        let df = ohlcv_df_from_ohlc(df, current_time_ms, width_sec, count);
+
+        let array: ndarray::Array2<f64> = df
+            .select(&["time", "open", "high", "low", "close", "vol"])
+            .unwrap()
+            .to_ndarray::<Float64Type>()
+            .unwrap();
+
+        let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+
+        return py_array2.to_owned();
+    }
+
+
+    fn ohlcv_raw(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
         let current_time_ms = self.get_current_time();
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
@@ -278,6 +302,8 @@ impl DummyBb {
         let size = size_s.f64().unwrap();
         let bs = bs_s.utf8().unwrap();
 
+        let ohlcv_df = ohlcv_df_from_raw(&df, 0, interval_sec, 0);
+
         Python::with_gil(|py| {
             let mut py_session = MainSession::from(self);
             //let mut session = self.market.market.get_session();
@@ -305,7 +331,7 @@ impl DummyBb {
                 if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
                     // let market = PyObject::from(self);
 
-                    let copy_session = CopySession::from(&py_session);
+                    let copy_session = CopySession::from(&py_session, &ohlcv_df);
                     let py_session2 = Py::new(py, copy_session)?;
                     // let obj = py_session2.to_object(py);
 
