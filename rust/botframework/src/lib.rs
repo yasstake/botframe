@@ -3,6 +3,7 @@ use std::sync::Arc;
 use exchange::MarketInfo;
 use exchange::ohlcv_df_from_ohlc;
 use pyo3::ffi::PyTuple_GetSlice;
+use pyo3::ffi::Py_DebugFlag;
 use pyo3::ffi::Py_SetRecursionLimit;
 use pyo3::prelude::*;
 
@@ -91,12 +92,14 @@ use polars::datatypes::TimeUnit;
 use polars_core::datatypes::AnyValue::Float64;
 
 use crate::exchange::session::SessionValue;
+use pyo3::types::PyList;
 
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
     _sim_start_ms: i64,
-    _sim_end_ms: i64
+    _sim_end_ms: i64,
+    _debug_loop_count: i64,
 }
 
 struct MainSession {
@@ -138,10 +141,11 @@ struct CopySession {
     short_orders: Orders,
     positions: Positions,
     wallet_balance: f64, // 入金額
+    _ohlcv_width: i64
 }
 
 impl CopySession {
-    fn from(s: &MainSession, ohlcv_df: &DataFrame) -> Self {
+    fn from(s: &MainSession, ohlcv_df: &DataFrame, ohlcv_width: i64) -> Self {
         return CopySession {
             df: s.df.clone(),
             df_ohlcv: ohlcv_df.clone(),
@@ -152,6 +156,7 @@ impl CopySession {
             short_orders: s.session.short_orders.clone(),
             positions: s.session.positions.clone(),
             wallet_balance: s.session.wallet_balance,
+            _ohlcv_width: ohlcv_width
         };
     }
 }
@@ -159,6 +164,7 @@ impl CopySession {
 use crate::exchange::ohlcv_df_from_raw;
 use crate::exchange::order::Order;
 use polars::prelude::Float64Type;
+
 
 #[pymethods]
 impl CopySession {
@@ -198,6 +204,10 @@ impl CopySession {
     }
 
     fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+        if width_sec < self._ohlcv_width {
+            println!("ohlcv width is shorter than tick, consider use ohlcv_raw() instead");
+        }
+
         let current_time_ms = self.get_current_time();
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
@@ -246,7 +256,8 @@ impl DummyBb {
         return DummyBb { 
             market: Bb::new(),
             _sim_start_ms: 0,
-            _sim_end_ms: 0
+            _sim_end_ms: 0,
+            _debug_loop_count: 0
         };
     }
     //--------------------------------------------------------------------------------------------
@@ -311,6 +322,8 @@ impl DummyBb {
             let skip_until = self.get_sim_start_ms();
 
             for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
+    
+
                 let time = t.unwrap();
                 let price = p.unwrap();
                 let size = s.unwrap();
@@ -324,42 +337,55 @@ impl DummyBb {
 
                 let warm_up_ok_flag = if skip_until < time {true} else {false};
 
-                // TODO: May skip wam up time
-
-                // 最初のインターバル毎の時刻で呼び出し。
-
-                let current_time_ms = py_session.get_timestamp_ms();
-                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
-
-                if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
-                    // let market = PyObject::from(self);
-
-                    let copy_session = CopySession::from(&py_session, &ohlcv_df);
-                    let py_session2 = Py::new(py, copy_session)?;
-                    // let obj = py_session2.to_object(py);
-
-                    // let args = PyTuple::new(py, [&obj]);
-
-                    let result = agent.call_method1("on_tick", (clock_time, py_session2))?;
-                    //let args = PyTuple::new(py, [clock_time]);
-                    //let result = agent.call_method1("on_tick", args)?;
-                    // call back tick
-
-                    // Get back ?
-                    // py_session = obj.extract::<PySession>()?;
-                }
-
                 // すべてのイベントを呼び出し
                 // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
                 if want_event {
                     let bs = OrderType::from_str(bs).to_long_string();
-                    //let on_event: &PyAny = agent.get_item("on_event")?.into();
+
                     let args = (time, bs, price, size);
                     agent.call_method1("on_event", args)?;
-                    //on_event.call_method1(py, args)?;
-
-                    // agent.call_method(name, args, kwargs)
                 }
+
+
+                // TODO: May skip wam up time
+                // 最初のインターバル毎の時刻で呼び出し。
+                let current_time_ms = py_session.get_timestamp_ms();
+                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+
+                if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
+                    if self._debug_loop_count == 1 {
+                        return Ok(())
+                    }
+                    else if self._debug_loop_count != 0 {
+                        self._debug_loop_count -= 1;    
+                    }
+
+                    let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
+                    let py_session2 = Py::new(py, copy_session)?;
+
+                    let result = agent.call_method1("on_tick", (clock_time, py_session2))?;
+
+                    match result.extract::<PyOrder>() {
+                        Ok(order) => {
+                            println!("Make ORDER {:?}", order);
+                        }
+                        Err(e) => {
+
+                        }
+                    }
+
+                    match result.downcast::<PyList>(){
+                        Ok(list) => {
+                            for item in list.iter() {
+                                println!("{:?}", item);
+                            }
+                        }
+                        Err(e) => {
+
+                        }
+                    }
+                }
+
 
                 let results = py_session.get_session().main_exec_event(
                     time,
@@ -436,6 +462,11 @@ impl DummyBb {
     fn get_sim_end_ms(&self) -> i64{
         return self._sim_end_ms;
     }
+
+    #[setter]
+    fn set_debug_loop_count(&mut self, count: i64) {
+        self._debug_loop_count = count;
+    }
 }
 
 #[pyfunction]
@@ -491,6 +522,8 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         let mut session = bb.market.market.get_session();
 
         for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
+
+
             let time = t.unwrap();
             let price = p.unwrap();
             let size = s.unwrap();
@@ -609,6 +642,7 @@ struct PyOrder {
 }
 
 #[pymethods]
+
 impl PyOrder {
     #[new]
     fn new(side: String, price: f64, size: f64, valid_sec: i64) -> Self {
@@ -618,6 +652,11 @@ impl PyOrder {
             size: size,
             duration_ms: valid_sec * 1_000
         }    
+    }
+
+    fn __str__ (&self) -> PyResult<String> {
+        return Ok(format!("side: {}, price: {}, size: {}, duration_ms: {}", 
+            self.side.to_long_string(), self.price, self.size, self.duration_ms));
     }
 }
 
