@@ -93,6 +93,8 @@ use polars_core::datatypes::AnyValue::Float64;
 use crate::exchange::order::OrderType;
 use polars::datatypes::TimeUnit;
 
+use log::debug;
+
 #[pymethods]
 impl DummyBb {
     #[new]
@@ -120,14 +122,13 @@ impl DummyBb {
             }
 
             let mut want_event = false;
-
             if methods_list.contains("on_event").unwrap() {
                 println!("call back by all log events");
-                want_update = true;
+                want_event = true;
             }
 
-            if (want_tick == false) && (want_update == false) && (want_event == false) {
-                println!("method on_tick OR on_update OR on_event must be implementd")
+            if (want_tick == false) && (want_update == false) {
+                println!("on_tick() OR on_update() must be implementd")
             }
 
             let mut start_time_ms = self.market.start_time();
@@ -140,7 +141,7 @@ impl DummyBb {
             let size_s = &df["size"];
             let bs_s = &df["bs"];
 
-            let time = &time_s.i64().unwrap();
+            let time = &time_s.datetime().unwrap();
             let price = price_s.f64().unwrap();
             let size = size_s.f64().unwrap();
             let bs = bs_s.utf8().unwrap();
@@ -152,67 +153,44 @@ impl DummyBb {
                 let price = p.unwrap();
                 let size = s.unwrap();
                 let bs = b.unwrap();
-                println!("{:?} {:?} {:?} {:?}", time, price, size, bs);
+                log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
 
                 // TODO: May skip wam up time
 
-                // call all event
+                // 最初のインターバル毎の時刻で呼び出し。
+                let current_time_ms = session.get_timestamp_ms();
+                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+
+                if want_tick && (current_time_ms < clock_time) {
+                    let args = PyTuple::new(py, [clock_time]);
+                    let result = agent.call_method1("on_tick", args)?;                    
+                    // call back tick
+                }
+
+                // すべてのイベントを呼び出し
                 if want_event {
+                    let bs = OrderType::from_str(bs).to_long_string();
                     //let on_event: &PyAny = agent.get_item("on_event")?.into();
                     let args = (time, bs, price, size);
-                    agent.call_method1("on_event", args);                    
+                    agent.call_method1("on_event", args)?;                    
                     //on_event.call_method1(py, args)?;
 
                     // agent.call_method(name, args, kwargs)
                 }
 
-                //let current_time = self.market.market
-                let current_time_ms = session.get_timestamp_ms();
 
-                let clock_time = time % 1_000 * 1_000;
-
-                if want_tick && (current_time_ms < clock_time) {
-                    let args = PyTuple::new(py, [clock_time]);
-                    agent.call_method1("on_tick", args);                    
-
-                    // call back tick
-                }
-
-                // update market
                 let results = session.main_exec_event(time, OrderType::from_str(bs), price, size);
 
                 //call back event update
                 if want_update && results.len() != 0 {
                     for r in results {
-                        /*
-                        pub timestamp: i64,
-                        pub order_id: String,
-                        pub order_sub_id: i32,       // 分割された場合に利用
-                        pub order_type: OrderType,
-                        pub post_only: bool,
-                        pub create_time: i64,
-                        pub status: OrderStatus,
-                        pub open_price: f64,
-                        pub close_price: f64,
-                        pub size: f64, // in usd
-                        pub volume: f64, //in BTC
-                        pub profit: f64,
-                        pub fee: f64,
-                        pub total_profit: f64,
-                        */
-                        //let r2 = r.clone();
-                        
-                        // TODO: パラメータが多く面倒なのでJSONで返すまたは、配列で返す
-
-                        let args = (&r.timestamp, &r.order_id, r.order_sub_id);
-
                         let result = PyOrderResult::from(r);
                        
                         let py_result = Py::new(py, result)?;
                         let obj = py_result.to_object(py);
 
                         let args = PyTuple::new(py, [&obj]);                        
-                        agent.call_method1("on_tick", args);                    
+                        agent.call_method1("on_update", args)?;                    
                     }
                 }
             }
@@ -237,8 +215,8 @@ impl DummyBb {
 
         let array = self.market._ohlcv(current_time_ms, width_sec, count);
 
-        println!("s:{}", current_time_ms);
-        println!("{:?}", array);
+        // println!("s:{}", current_time_ms);
+        // println!("{:?}", array);
 
         let py_array2: &PyArray2<f64> = array.into_pyarray(py);
 

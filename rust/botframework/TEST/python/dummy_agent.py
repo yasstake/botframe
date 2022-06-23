@@ -3,18 +3,25 @@ import rbot
 
 
 class DummyAgent:
-    def event(time_ns, type, price, volume):
-        print(time_ns, price, volume, side)
 
-    def tick(time_ns):
-        print(time_ns)
+    def on_event(self, time_ms, action, price, size):
+        print("E", time_ms, action, price, size)
 
+    def on_tick(self, time_ms):
+        print("c", time_ms)
+        return str(time_ms) + "is processed"
 
 
 bb = rbot.DummyBb()
-bb.load_data(20)
+bb.log_load(2)
+
+agent = DummyAgent()
+
+bb.run(agent, 5)
 
 
+
+'''
 session = bb.create_session()
 
 
@@ -55,3 +62,4 @@ pl.datetime(year, month, day)
 
 pl.Time()
 
+'''

@@ -13,6 +13,8 @@ use crate::exchange::order::Orders;
 
 use crate::exchange::order::OrderResult;
 
+use log::debug;
+
 #[derive(Debug)]
 ///　ポジションの１項目
 /// 　Positionsでポジションリストを扱う。
@@ -48,7 +50,7 @@ impl Position {
             let volume = self.calc_volume() + order.volume;
             self.price = new_size / volume;
             self.size = new_size;
-            println!("volume={} new_size={}", volume, new_size);
+            log::debug!("volume={} new_size={}", volume, new_size);
         }
 
         return Ok(());
@@ -62,14 +64,14 @@ impl Position {
         if self.size == 0.0 {
             // ポジションがない場合なにもしない。
             self.price = 0.0; // （誤差蓄積解消のためポジション０のときはリセット）
-            println!("No Action");
+            log::debug!("No Action");
             return Err(OrderStatus::NoAction);
         } else if self.size < order.size {
             // ポジション以上にクローズしようとした場合なにもしない（別途、クローズとオープンに分割して処理する）
-            println!("OverPosition {} {}", self.size, order.size);
+            log::debug!("OverPosition {} {}", self.size, order.size);
             return Err(OrderStatus::OverPosition);
         }
-        println!("Normal Close");
+        log::debug!("Normal Close");
         // オーダの全部クローズ（ポジションは残る）
         order.status = OrderStatus::ClosePosition;
         order.close_price = order.open_price;
@@ -121,12 +123,12 @@ impl Positions {
         let long_margin = (center_price - self.long_position.price)     // 購入単価 - 現在単価
              * self.long_volume();
 
-        println!("long_margin={}", long_margin);
+        log::debug!("long_margin={}", long_margin);
 
         let short_margin = (self.short_position.price - center_price)    // 購入単価 - 現在単価
             * self.short_volume();
 
-        println!("short_margin={}", short_margin);
+        log::debug!("short_margin={}", short_margin);
 
         return long_margin + short_margin;
     }
@@ -168,12 +170,12 @@ impl Positions {
         match order.order_type {
             OrderType::Buy => match self.short_position.close_position(order) {
                 Ok(()) => {
-                    println!("short position close");
+                    log::debug!("short position close");
                     return Ok(());
                 }
                 Err(e) => {
                     if e == OrderStatus::NoAction {
-                        println!("long position open");
+                        log::debug!("long position open");
                         return self.long_position.open_position(order);
                     } else {
                         return Err(e);
@@ -182,12 +184,12 @@ impl Positions {
             },
             OrderType::Sell => match self.long_position.close_position(order) {
                 Ok(()) => {
-                    println!("long position close");
+                    log::debug!("long position close");
                     return Ok(());
                 }
                 Err(e) => {
                     if e == OrderStatus::NoAction {
-                        println!("short position open");
+                        log::debug!("short position open");
                         return self.short_position.open_position(order);
                     } else {
                         return Err(e);
@@ -368,7 +370,7 @@ impl SessionValue {
         // 逆転したら補正。　(ほとんど呼ばれない想定)
         // 数値が初期化されていない場合２つの値は0になっているが、マイナスにはならないのでこれでOK.
         if self.buy_board_edge_price < self.sell_board_edge_price {
-            println!(
+            log::debug!(
                 "Force update price buy=> {}  /  sell=> {}",
                 self.buy_board_edge_price, self.sell_board_edge_price
             );
@@ -438,7 +440,7 @@ impl SessionValue {
 
                     match self.positions.split_order(order_result) {
                         Ok(mut child_order) => {
-                            println!("Split orders {:?} {:?}", order_result.size, child_order.size);
+                            log::debug!("Split orders {:?} {:?}", order_result.size, child_order.size);
 
                             self.positions.update_small_position(order_result);
                             self.log_order_result(order_result);
@@ -541,18 +543,18 @@ impl Session for SessionValue {
         //現在のオーダーから執行可能な量を _partial_workから引き算し０になったらオーダ成立（一部約定はしない想定）
         match self.exec_event_execute_order(current_time_ms, order_type, price, size) {
             Ok(mut order_result) => {
-                println!("Position add OK");
+                log::debug!("Position add OK");
                 //ポジションに追加しする。
                 //　ログはupdate_position内で実施（分割があるため）
                 self.update_position(&mut order_result);
             }
             Err(e) => {
-                println!("position add fail {:?}", e);
+                log::debug!("position add fail {:?}", e);
                 if e == OrderStatus::NoAction {
-                    println!("Pass position increment")
+                    log::debug!("Pass position increment")
                     // Do nothing
                 } else {
-                    println!("ERROR status {:?} ", e);
+                    log::debug!("ERROR status {:?} ", e);
                 }
             }
         }
@@ -601,7 +603,7 @@ impl Session for SessionValue {
                 return Ok(());
             }
             _ => {
-                println!("Unknown order type {:?} / use B or S", side);
+                log::debug!("Unknown order type {:?} / use B or S", side);
             }
         }
 
