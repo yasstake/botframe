@@ -148,7 +148,10 @@ impl OrderResult {
 // Status life cycle
 //   "CREATED" -> "CLOSE" or "CANCEL"
 
+use pyo3::prelude::pyclass;
+
 #[derive(Debug, Clone)]
+#[pyclass]
 pub struct Order {
     pub create_time: i64, // in ms
     pub order_id: String, // YYYY-MM-DD-SEQ
@@ -207,6 +210,10 @@ impl Orders {
             buy_queue: buy_order,
             q: vec![],
         };
+    }
+
+    pub fn get_q(&self) -> Vec<Order> {
+        return self.q.clone();
     }
 
     /// オーダーをキューに入れる。

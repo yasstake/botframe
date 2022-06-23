@@ -7,9 +7,12 @@ class DummyAgent:
         pass
         #//print("E", time_ms, action, price, size)
 
-    def on_tick(self, market, time_ms):
-        print("c", dir(market), time_ms)
-        print(market.log_start_ms)
+    def on_tick(self, time_ms, market):
+        #print("c", time_ms, market.current_time)
+        
+        # TODO: 出たーがなかったときの処理。
+        market.ohlcv(60, 200)
+        # print(market.log_start_ms)
         #ohlcv = bc.log_ohlcv(time_ms, 60, 100)
 
         #print(ohlcv)
@@ -18,7 +21,7 @@ class DummyAgent:
 
 
 bb = rbot.DummyBb()
-bb.log_load(2)
+bb.log_load(10)
 print(bb.log_start_ms)
 print(bb.log_end_ms)
 print(bb.log_ohlcv(0, 60, 100))
@@ -29,12 +32,16 @@ print(bb.log_ohlcv(0, 60, 100))
 
 agent = DummyAgent()
 
+bb.run(agent, 60)
+
+
+
 bc = bb
 
 print("BBB", bb.log_start_ms)
 print("CCC", bc.log_start_ms)
 
-result = rbot.sim_run(bb, agent, 5)
+# result = rbot.sim_run(bb, agent, 5)
 
 print("BBB", bb.log_start_ms)
 print("CCC", bc.log_start_ms)

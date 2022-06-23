@@ -82,7 +82,7 @@ impl TradeBlock {
 
 use numpy::ndarray;
 
-fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
+pub fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
     let mask = df.column("time").unwrap().gt_eq(start_time_ms).unwrap()
         & df.column("time").unwrap().lt(end_time_ms).unwrap();
 
@@ -92,7 +92,7 @@ fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame 
 }
 
 
-fn ohlcv_df_from_raw(df: &DataFrame, mut current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
+pub fn ohlcv_df_from_raw(df: &DataFrame, mut current_time_ms: i64, width_sec: i64, count: i64) -> DataFrame {
     if current_time_ms <= 0 {
         current_time_ms = df.column("time").unwrap().max().unwrap();
     }
@@ -102,6 +102,10 @@ fn ohlcv_df_from_raw(df: &DataFrame, mut current_time_ms: i64, width_sec: i64, c
     let start_time_ms = ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64));
     let end_time_ms = current_time_ms;
 
+    return ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
+}
+
+fn ohlcv_from_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64, width_sec: i64) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
     let t = df.column("time").unwrap();
     

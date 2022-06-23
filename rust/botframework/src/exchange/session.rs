@@ -109,6 +109,14 @@ impl Positions {
         };
     }
 
+    pub fn get_long_position(&self) -> (f64, f64) {
+        return (self.long_position.price, self.long_position.size);
+    }
+
+    pub fn get_short_position(&self) -> (f64, f64) {
+        return (self.short_position.price, self.short_position.size);
+    }
+
     fn long_volume(&self) -> f64 {
         return self.long_position.calc_volume();
     }
@@ -260,16 +268,16 @@ pub struct Indicator {
 pub struct SessionValue {
     _session_id: String,
     _order_index: i64,
-    sell_board_edge_price: f64,
-    buy_board_edge_price: f64,
-    current_time_ms: i64,
-    long_orders: Orders,
-    short_orders: Orders,
-    positions: Positions,
-    order_history: Vec<OrderResult>,
-    tick_order_history: Vec<OrderResult>,
-    indicators: Vec<Indicator>,
-    wallet_balance: f64, // 入金額
+    pub sell_board_edge_price: f64,
+    pub buy_board_edge_price: f64,
+    pub current_time_ms: i64,
+    pub long_orders: Orders,
+    pub short_orders: Orders,
+    pub positions: Positions,
+    pub order_history: Vec<OrderResult>,
+    pub tick_order_history: Vec<OrderResult>,
+    pub indicators: Vec<Indicator>,
+    pub wallet_balance: f64, // 入金額
 }
 
 impl SessionValue {
@@ -492,6 +500,7 @@ impl SessionValue {
 
 
 pub trait Session {
+    fn new_from() -> Self;
     fn get_timestamp_ms(&mut self) -> i64;
     fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>;
     fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus>; 
@@ -510,6 +519,10 @@ pub trait Session {
 }
 
 impl Session for SessionValue {
+    fn new_from() -> Self {
+        return SessionValue::new();
+    }
+
     fn get_timestamp_ms(&mut self) -> i64 {
         return self.current_time_ms;
     }

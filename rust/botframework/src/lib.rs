@@ -75,6 +75,22 @@ class Agent:
 
     print(exchange.history)
 
+
+
+----
+LifeCycle問題
+          Python                              Rust
+
+             ------------------------->  create DummyBb
+            bb <----------------------------------
+
+            bb.run --------------------------> Borrowed.
+
+            データインターフェースはコピーする。
+            案）オーダーインターフェースを文字列にする。
+
+
+
 */
 
 use crate::bb::market::Bb;
@@ -83,11 +99,11 @@ use chrono::{DateTime, Utc};
 use numpy::IntoPyArray;
 use numpy::PyArray2;
 
-use async_std::task;
-use polars_core::datatypes::AnyValue::Float64;
 use crate::exchange::order::OrderType;
-use polars::datatypes::TimeUnit;
+use async_std::task;
 use log::debug;
+use polars::datatypes::TimeUnit;
+use polars_core::datatypes::AnyValue::Float64;
 
 use crate::exchange::session::SessionValue;
 
@@ -96,35 +112,121 @@ struct DummyBb {
     market: Bb,
 }
 
-
-#[pyclass(module="rbot")]
-struct PySession {
+struct MainSession {
     df: DataFrame,
-    session: SessionValue
+    session: SessionValue,
 }
 
-
-#[pymethods]
-impl PySession {
-    #[new]
+impl MainSession {
     fn from(bb: &mut DummyBb) -> Self {
-        return PySession { 
+        return MainSession {
             df: bb.market.market._df(),
-            session: SessionValue::new()
-         }
+            session: SessionValue::new(),
+        };
     }
 
-    fn get_timestamp_ms(&mut self) -> i64{
+    fn get_timestamp_ms(&mut self) -> i64 {
         return self.session.get_timestamp_ms();
     }
 }
 
-impl PySession {
+impl MainSession {
     fn get_session(&mut self) -> &mut SessionValue {
         return &mut self.session;
     }
+}
 
+use crate::exchange::order::Orders;
+use crate::exchange::session::Positions;
 
+#[pyclass]
+#[derive(Clone)]
+struct CopySession {
+    df: DataFrame,
+    sell_board_edge_price: f64,
+    buy_board_edge_price: f64,
+    current_time_ms: i64,
+    long_orders: Orders,
+    short_orders: Orders,
+    positions: Positions,
+    wallet_balance: f64, // 入金額
+}
+
+impl CopySession {
+    fn from(s: &MainSession) -> Self {
+        return CopySession {
+            df: s.df.clone(),
+            sell_board_edge_price: s.session.sell_board_edge_price,
+            buy_board_edge_price: s.session.buy_board_edge_price,
+            current_time_ms: s.session.current_time_ms,
+            long_orders: s.session.long_orders.clone(),
+            short_orders: s.session.short_orders.clone(),
+            positions: s.session.positions.clone(),
+            wallet_balance: s.session.wallet_balance,
+        };
+    }
+}
+
+use crate::exchange::ohlcv_df_from_raw;
+use crate::exchange::order::Order;
+use polars::prelude::Float64Type;
+
+#[pymethods]
+impl CopySession {
+    #[getter]
+    fn get_current_time(&self) -> i64 {
+        return self.current_time_ms;
+    }
+
+    #[getter]
+    fn get_sell_board_edge_price(&self) -> f64 {
+        return self.sell_board_edge_price;
+    }
+
+    #[getter]
+    fn get_buy_board_edge_price(&self) -> f64 {
+        return self.buy_board_edge_price;
+    }
+
+    #[getter]
+    fn get_long_orders(&self) -> Vec<Order> {
+        return self.long_orders.get_q();
+    }
+
+    #[getter]
+    fn get_short_orders(&self) -> Vec<Order> {
+        return self.short_orders.get_q();
+    }
+
+    #[getter]
+    fn get_long_position(&self) -> (f64, f64) {
+        return self.positions.get_long_position();
+    }
+
+    #[getter]
+    fn get_short_position(&self) -> (f64, f64) {
+        return self.positions.get_short_position();
+    }
+
+    fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+        let current_time_ms = self.get_current_time();
+        let gil = pyo3::Python::acquire_gil();
+        let py = gil.python();
+
+        let df = &self.df;
+
+        let df = ohlcv_df_from_raw(df, current_time_ms, width_sec, count);
+
+        let array: ndarray::Array2<f64> = df
+            .select(&["time", "open", "high", "low", "close", "vol"])
+            .unwrap()
+            .to_ndarray::<Float64Type>()
+            .unwrap();
+
+        let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+
+        return py_array2.to_owned();
+    }
 }
 
 #[pymethods]
@@ -176,43 +278,46 @@ impl DummyBb {
         let size = size_s.f64().unwrap();
         let bs = bs_s.utf8().unwrap();
 
-
         Python::with_gil(|py| {
-            let mut py_session = PySession::from(self);
+            let mut py_session = MainSession::from(self);
             //let mut session = self.market.market.get_session();
             //let session = &mut py_session.session;
+
+            let skip_until = start_time_ms + 1_000 * 600;       // skip 10 min
 
             for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
                 let time = t.unwrap();
                 let price = p.unwrap();
                 let size = s.unwrap();
                 let bs = b.unwrap();
+
                 log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
+
+                let warm_up_ok_flag = if skip_until < time {true} else {false};
 
                 // TODO: May skip wam up time
 
                 // 最初のインターバル毎の時刻で呼び出し。
-                if true {
+
                 let current_time_ms = py_session.get_timestamp_ms();
                 let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
-                if want_tick && (current_time_ms < clock_time) {
+                if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
                     // let market = PyObject::from(self);
 
-
-                    let py_session2 = Py::new(py, py_session)?;
-                    let obj = py_session2.to_object(py);
+                    let copy_session = CopySession::from(&py_session);
+                    let py_session2 = Py::new(py, copy_session)?;
+                    // let obj = py_session2.to_object(py);
 
                     // let args = PyTuple::new(py, [&obj]);
 
-                    //let result = agent.call_method1("on_tick", (py_session2, clock_time))?;
-                    let args = PyTuple::new(py, [clock_time]);
-                    let result = agent.call_method1("on_tick", args)?;                    
+                    let result = agent.call_method1("on_tick", (clock_time, py_session2))?;
+                    //let args = PyTuple::new(py, [clock_time]);
+                    //let result = agent.call_method1("on_tick", args)?;
                     // call back tick
 
                     // Get back ?
                     // py_session = obj.extract::<PySession>()?;
-                }
                 }
 
                 // すべてのイベントを呼び出し
@@ -227,8 +332,12 @@ impl DummyBb {
                     // agent.call_method(name, args, kwargs)
                 }
 
-                let results = 
-                    py_session.get_session().main_exec_event(time, OrderType::from_str(bs), price, size);
+                let results = py_session.get_session().main_exec_event(
+                    time,
+                    OrderType::from_str(bs),
+                    price,
+                    size,
+                );
 
                 //call back event update
                 if want_update && results.len() != 0 {
@@ -280,7 +389,6 @@ impl DummyBb {
     }
 }
 
-
 #[pyfunction]
 fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
     let methods_list = agent.dir();
@@ -308,30 +416,30 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
     }
 
     Python::with_gil(|py| {
-/*
-    let py_bb = Py::new(py, market)?;
-    let obj = py_result.to_object(py);
+        /*
+            let py_bb = Py::new(py, market)?;
+            let obj = py_result.to_object(py);
 
-*/
-    let mut bb_cell: &PyCell<DummyBb> = market.downcast()?;
-    let mut bb = &mut bb_cell.borrow_mut();
+        */
+        let mut bb_cell: &PyCell<DummyBb> = market.downcast()?;
+        let mut bb = &mut bb_cell.borrow_mut();
 
-    let mut start_time_ms = bb.market.start_time();
-    let end_time_ms = bb.market.end_time();
+        let mut start_time_ms = bb.market.start_time();
+        let end_time_ms = bb.market.end_time();
 
-    let df = bb.market.market.select_df(start_time_ms, end_time_ms);
+        let df = bb.market.market.select_df(start_time_ms, end_time_ms);
 
-    let time_s = &df["time"];
-    let price_s = &df["price"];
-    let size_s = &df["size"];
-    let bs_s = &df["bs"];
+        let time_s = &df["time"];
+        let price_s = &df["price"];
+        let size_s = &df["size"];
+        let bs_s = &df["bs"];
 
-    let time = &time_s.datetime().unwrap();
-    let price = price_s.f64().unwrap();
-    let size = size_s.f64().unwrap();
-    let bs = bs_s.utf8().unwrap();
+        let time = &time_s.datetime().unwrap();
+        let price = price_s.f64().unwrap();
+        let size = size_s.f64().unwrap();
+        let bs = bs_s.utf8().unwrap();
 
-    let mut session = bb.market.market.get_session();
+        let mut session = bb.market.market.get_session();
 
         for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
             let time = t.unwrap();
@@ -349,8 +457,8 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
             if want_tick && (current_time_ms < clock_time) {
                 // let market = Py::new(py, bb)?.to_object(py);
 
-//                let args = PyTuple::new(py, [bb, clock_time]);
-                
+                //                let args = PyTuple::new(py, [bb, clock_time]);
+
                 let result = agent.call_method1("on_tick", (market, clock_time))?;
                 // call back tick
             }
@@ -385,10 +493,6 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         Ok(())
     })
 }
-
-
-
-
 
 use crate::exchange::order::OrderResult;
 use crate::exchange::order::OrderStatus;
@@ -451,6 +555,7 @@ impl PyOrderResult {
 fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DummyBb>()?;
     m.add_class::<PyOrderResult>()?;
+    m.add_class::<Order>()?;
     m.add_function(wrap_pyfunction!(sim_run, m)?)?;
 
     Ok(())
