@@ -153,6 +153,7 @@ use pyo3::prelude::pyclass;
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct Order {
+    _order_index: i64,
     pub create_time: i64, // in ms
     pub order_id: String, // YYYY-MM-DD-SEQ
     pub order_type: OrderType,
@@ -160,7 +161,7 @@ pub struct Order {
     pub valid_until: i64, // in ms
     pub price: f64,
     pub size: f64,        // in USD
-    pub taker: bool,      // takerの場合true, falseの場合はmakerとなる。
+//    pub taker: bool,      // takerの場合true, falseの場合はmakerとなる。
     pub remain_size: f64, // ログから想定した未約定数。０になったら全部約定。本来は分割で約定するが、０となの全部約定時のみ発生。
 }
 
@@ -176,6 +177,7 @@ impl Order {
         taker: bool,
     ) -> Self {
         return Order {
+            _order_index: 0,
             create_time: create_time,
             order_id: order_id,
             order_type: order_type,
@@ -183,11 +185,14 @@ impl Order {
             valid_until: valid_until,
             price: price,
             size: size,
-            taker: taker,
             remain_size: size,
         };
     }
 }
+
+use pyo3::prelude::pymethods;
+
+
 
 /// 未実現オーダーリストを整理する。
 /// ・　オーダーの追加

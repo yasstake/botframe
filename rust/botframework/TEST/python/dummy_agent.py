@@ -11,8 +11,7 @@ class DummyAgent:
         #print("c", time_ms, market.current_time)
         print("start", time_ms)        
         # TODO: 出たーがなかったときの処理。
-        market.ohlcv(60, 200)
-        print("end");                
+        market.ohlcv(10, 480)
         # print(market.log_start_ms)
         #ohlcv = bc.log_ohlcv(time_ms, 60, 100)
 
@@ -33,7 +32,7 @@ print(bb.log_ohlcv(0, 60, 100))
 
 agent = DummyAgent()
 
-bb.run(agent, 60)
+bb.run(agent, 10)
 
 
 

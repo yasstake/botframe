@@ -5,10 +5,7 @@ use exchange::ohlcv_df_from_ohlc;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_SetRecursionLimit;
 use pyo3::prelude::*;
-// use pyo3::types::PyDateTime;
-// use pyo3::types::PyInt;
 
-//use crate::polars::PyDataFrame;
 use ::polars::prelude::DataFrame;
 
 #[macro_use]
@@ -23,7 +20,6 @@ use chrono::NaiveDateTime;
 use polars::prelude::Series;
 use polars_lazy::prelude::*;
 
-// use pyo3::PyTryInto::try_into;
 
 /*
 Python からよびださされるモジュール
@@ -78,18 +74,6 @@ class Agent:
 
 
 
-----
-LifeCycle問題
-          Python                              Rust
-
-             ------------------------->  create DummyBb
-            bb <----------------------------------
-
-            bb.run --------------------------> Borrowed.
-
-            データインターフェースはコピーする。
-            案）オーダーインターフェースを文字列にする。
-
 
 
 */
@@ -111,6 +95,8 @@ use crate::exchange::session::SessionValue;
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
+    _sim_start_ms: i64,
+    _sim_end_ms: i64
 }
 
 struct MainSession {
@@ -257,7 +243,11 @@ impl CopySession {
 impl DummyBb {
     #[new]
     fn new() -> Self {
-        return DummyBb { market: Bb::new() };
+        return DummyBb { 
+            market: Bb::new(),
+            _sim_start_ms: 0,
+            _sim_end_ms: 0
+        };
     }
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
@@ -287,8 +277,19 @@ impl DummyBb {
             println!("on_tick() OR on_update() must be implementd")
         }
 
+        // warm up run: １０分
+        // データ保持期間　カットしない？
+
         let mut start_time_ms = self.market.start_time();
         let end_time_ms = self.market.end_time();
+
+        if self.get_sim_start_ms() == 0 {
+            self.set_sim_start_ms(start_time_ms + 60 * 1_000);  // warm up 60 sec
+        }
+
+        if self.get_sim_end_ms() == 0 {
+            self.set_sim_end_ms(end_time_ms);
+        }
 
         let df = self.market.market.select_df(start_time_ms, end_time_ms);
 
@@ -306,16 +307,18 @@ impl DummyBb {
 
         Python::with_gil(|py| {
             let mut py_session = MainSession::from(self);
-            //let mut session = self.market.market.get_session();
-            //let session = &mut py_session.session;
 
-            let skip_until = start_time_ms + 1_000 * 600;       // skip 10 min
+            let skip_until = self.get_sim_start_ms();
 
             for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
                 let time = t.unwrap();
                 let price = p.unwrap();
                 let size = s.unwrap();
                 let bs = b.unwrap();
+
+                if self.get_sim_end_ms() < time {
+                    return Ok(());
+                }
 
                 log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
 
@@ -412,6 +415,26 @@ impl DummyBb {
     #[getter]
     fn get_log_end_ms(&self) -> PyResult<i64> {
         return Ok(self.market.end_time());
+    }
+
+    #[setter]
+    fn set_sim_start_ms(&mut self, start_ms: i64) {
+        self._sim_start_ms = start_ms;
+    }
+
+    #[getter]
+    fn get_sim_start_ms(&self) -> i64{
+        return self._sim_start_ms;
+    }
+
+    #[setter]
+    fn set_sim_end_ms(&mut self, end_ms: i64) {
+        self._sim_end_ms = end_ms;
+    }
+
+    #[getter]
+    fn get_sim_end_ms(&self) -> i64{
+        return self._sim_end_ms;
     }
 }
 
@@ -576,13 +599,36 @@ impl PyOrderResult {
     }
 }
 
+#[pyclass(name="Order", module="rbot")]
+#[derive(Debug, Clone)]
+struct PyOrder {
+    side: OrderType,
+    price: f64,
+    size: f64,
+    duration_ms: i64,
+}
+
+#[pymethods]
+impl PyOrder {
+    #[new]
+    fn new(side: String, price: f64, size: f64, valid_sec: i64) -> Self {
+        return PyOrder{
+            side: OrderType::from_str(side.as_str()),
+            price: price, 
+            size: size,
+            duration_ms: valid_sec * 1_000
+        }    
+    }
+}
+
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DummyBb>()?;
     m.add_class::<PyOrderResult>()?;
-    m.add_class::<Order>()?;
-    m.add_function(wrap_pyfunction!(sim_run, m)?)?;
+    m.add_class::<PyOrder>()?;
+    // m.add_function(wrap_pyfunction!(sim_run, m)?)?;
 
     Ok(())
 }

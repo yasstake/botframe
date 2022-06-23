@@ -298,17 +298,6 @@ impl SessionValue {
         };
     }
 
-    fn generate_id(&mut self) -> String {
-        self._order_index += 1;
-        let index = self._order_index;
-
-        let upper = index / 1000;
-        let lower: i64 = index % 1000;
-
-        let id = format! {"{:04}-{:012}-{:03}",self._session_id, upper, lower};
-
-        return id.to_string();
-    }
 
     pub fn get_center_price(&self) -> f64 {
         if self.buy_board_edge_price == 0.0 || self.sell_board_edge_price == 0.0 {
@@ -472,6 +461,18 @@ impl SessionValue {
 
     }
 
+    fn generate_id(&mut self) -> String {
+        self._order_index += 1;
+        let index = self._order_index;
+
+        let upper = index / 1000;
+        let lower: i64 = index % 1000;
+
+        let id = format! {"{:012}-{:03}", upper, lower};
+
+        return id.to_string();
+    }
+
 
     // order_resultのログを蓄積する（オンメモリ）
     // ログオブジェクトは配列にいれるためClone する。
@@ -576,6 +577,8 @@ impl Session for SessionValue {
         return &self.tick_order_history;
     }
 
+
+
     /// オーダー作りオーダーリストへ追加する。
     /// 最初にオーダー可能かどうか確認する（余力の有無）
     fn make_order(
@@ -592,7 +595,7 @@ impl Session for SessionValue {
             return Err(OrderStatus::NoMoney);
         */
 
-        let order_id = self.generate_id();
+       let order_id = self.generate_id();
         let order = Order::new(
             self.current_time_ms,
             order_id,
