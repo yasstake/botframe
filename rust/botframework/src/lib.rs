@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_SetRecursionLimit;
@@ -81,19 +83,49 @@ use chrono::{DateTime, Utc};
 use numpy::IntoPyArray;
 use numpy::PyArray2;
 
+use async_std::task;
+use polars_core::datatypes::AnyValue::Float64;
+use crate::exchange::order::OrderType;
+use polars::datatypes::TimeUnit;
+use log::debug;
+
+use crate::exchange::session::SessionValue;
+
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
 }
 
-use async_std::task;
 
-use polars_core::datatypes::AnyValue::Float64;
+#[pyclass(module="rbot")]
+struct PySession {
+    df: DataFrame,
+    session: SessionValue
+}
 
-use crate::exchange::order::OrderType;
-use polars::datatypes::TimeUnit;
 
-use log::debug;
+#[pymethods]
+impl PySession {
+    #[new]
+    fn from(bb: &mut DummyBb) -> Self {
+        return PySession { 
+            df: bb.market.market._df(),
+            session: SessionValue::new()
+         }
+    }
+
+    fn get_timestamp_ms(&mut self) -> i64{
+        return self.session.get_timestamp_ms();
+    }
+}
+
+impl PySession {
+    fn get_session(&mut self) -> &mut SessionValue {
+        return &mut self.session;
+    }
+
+
+}
 
 #[pymethods]
 impl DummyBb {
@@ -104,49 +136,51 @@ impl DummyBb {
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
 
-    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()>{
-        
+    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
+        let methods_list = agent.dir();
+
+        let mut want_tick = false;
+        if methods_list.contains("on_tick").unwrap() {
+            println!("call back tick by {}[sec]", interval_sec);
+            want_tick = true;
+        }
+
+        let mut want_update = false;
+        if methods_list.contains("on_update").unwrap() {
+            println!("call back by update");
+            want_update = true;
+        }
+
+        let mut want_event = false;
+        if methods_list.contains("on_event").unwrap() {
+            println!("call back by all log events");
+            want_event = true;
+        }
+
+        if (want_tick == false) && (want_update == false) {
+            println!("on_tick() OR on_update() must be implementd")
+        }
+
+        let mut start_time_ms = self.market.start_time();
+        let end_time_ms = self.market.end_time();
+
+        let df = self.market.market.select_df(start_time_ms, end_time_ms);
+
+        let time_s = &df["time"];
+        let price_s = &df["price"];
+        let size_s = &df["size"];
+        let bs_s = &df["bs"];
+
+        let time = &time_s.datetime().unwrap();
+        let price = price_s.f64().unwrap();
+        let size = size_s.f64().unwrap();
+        let bs = bs_s.utf8().unwrap();
+
+
         Python::with_gil(|py| {
-            let methods_list = agent.dir();
-
-            let mut want_tick = false;
-            if methods_list.contains("on_tick").unwrap() {
-                println!("call back tick by {}[sec]", interval_sec);
-                want_tick = true;
-            }
-
-            let mut want_update = false;
-            if methods_list.contains("on_update").unwrap() {
-                println!("call back by update");
-                want_update = true;
-            }
-
-            let mut want_event = false;
-            if methods_list.contains("on_event").unwrap() {
-                println!("call back by all log events");
-                want_event = true;
-            }
-
-            if (want_tick == false) && (want_update == false) {
-                println!("on_tick() OR on_update() must be implementd")
-            }
-
-            let mut start_time_ms = self.market.start_time();
-            let end_time_ms = self.market.end_time();
-
-            let df = self.market.market.select_df(start_time_ms, end_time_ms);
-
-            let time_s = &df["time"];
-            let price_s = &df["price"];
-            let size_s = &df["size"];
-            let bs_s = &df["bs"];
-
-            let time = &time_s.datetime().unwrap();
-            let price = price_s.f64().unwrap();
-            let size = size_s.f64().unwrap();
-            let bs = bs_s.utf8().unwrap();
-
-            let mut session = self.market.market.get_session();
+            let mut py_session = PySession::from(self);
+            //let mut session = self.market.market.get_session();
+            //let session = &mut py_session.session;
 
             for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
                 let time = t.unwrap();
@@ -158,39 +192,51 @@ impl DummyBb {
                 // TODO: May skip wam up time
 
                 // 最初のインターバル毎の時刻で呼び出し。
-                let current_time_ms = session.get_timestamp_ms();
+                if true {
+                let current_time_ms = py_session.get_timestamp_ms();
                 let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
                 if want_tick && (current_time_ms < clock_time) {
+                    // let market = PyObject::from(self);
+
+
+                    let py_session2 = Py::new(py, py_session)?;
+                    let obj = py_session2.to_object(py);
+
+                    // let args = PyTuple::new(py, [&obj]);
+
+                    //let result = agent.call_method1("on_tick", (py_session2, clock_time))?;
                     let args = PyTuple::new(py, [clock_time]);
                     let result = agent.call_method1("on_tick", args)?;                    
                     // call back tick
                 }
+                }
 
                 // すべてのイベントを呼び出し
+                // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
                 if want_event {
                     let bs = OrderType::from_str(bs).to_long_string();
                     //let on_event: &PyAny = agent.get_item("on_event")?.into();
                     let args = (time, bs, price, size);
-                    agent.call_method1("on_event", args)?;                    
+                    agent.call_method1("on_event", args)?;
                     //on_event.call_method1(py, args)?;
 
                     // agent.call_method(name, args, kwargs)
                 }
 
-
-                let results = session.main_exec_event(time, OrderType::from_str(bs), price, size);
+                let results = 
+                    py_session.get_session().main_exec_event(time, OrderType::from_str(bs), price, size);
 
                 //call back event update
                 if want_update && results.len() != 0 {
                     for r in results {
                         let result = PyOrderResult::from(r);
-                       
+
                         let py_result = Py::new(py, result)?;
                         let obj = py_result.to_object(py);
 
-                        let args = PyTuple::new(py, [&obj]);                        
-                        agent.call_method1("on_update", args)?;                    
+                        let args = PyTuple::new(py, [&obj]);
+                        agent.call_method1("on_update", args)?;
                     }
                 }
             }
@@ -215,9 +261,6 @@ impl DummyBb {
 
         let array = self.market._ohlcv(current_time_ms, width_sec, count);
 
-        // println!("s:{}", current_time_ms);
-        // println!("{:?}", array);
-
         let py_array2: &PyArray2<f64> = array.into_pyarray(py);
 
         return py_array2.to_owned();
@@ -234,44 +277,153 @@ impl DummyBb {
     }
 }
 
+
+#[pyfunction]
+fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
+    let methods_list = agent.dir();
+
+    let mut want_tick = false;
+    if methods_list.contains("on_tick").unwrap() {
+        println!("call back tick by {}[sec]", interval_sec);
+        want_tick = true;
+    }
+
+    let mut want_update = false;
+    if methods_list.contains("on_update").unwrap() {
+        println!("call back by update");
+        want_update = true;
+    }
+
+    let mut want_event = false;
+    if methods_list.contains("on_event").unwrap() {
+        println!("call back by all log events");
+        want_event = true;
+    }
+
+    if (want_tick == false) && (want_update == false) {
+        println!("on_tick() OR on_update() must be implementd")
+    }
+
+    Python::with_gil(|py| {
+/*
+    let py_bb = Py::new(py, market)?;
+    let obj = py_result.to_object(py);
+
+*/
+    let mut bb_cell: &PyCell<DummyBb> = market.downcast()?;
+    let mut bb = &mut bb_cell.borrow_mut();
+
+    let mut start_time_ms = bb.market.start_time();
+    let end_time_ms = bb.market.end_time();
+
+    let df = bb.market.market.select_df(start_time_ms, end_time_ms);
+
+    let time_s = &df["time"];
+    let price_s = &df["price"];
+    let size_s = &df["size"];
+    let bs_s = &df["bs"];
+
+    let time = &time_s.datetime().unwrap();
+    let price = price_s.f64().unwrap();
+    let size = size_s.f64().unwrap();
+    let bs = bs_s.utf8().unwrap();
+
+    let mut session = bb.market.market.get_session();
+
+        for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
+            let time = t.unwrap();
+            let price = p.unwrap();
+            let size = s.unwrap();
+            let bs = b.unwrap();
+            log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
+
+            // TODO: May skip wam up time
+
+            // 最初のインターバル毎の時刻で呼び出し。
+            let current_time_ms = session.get_timestamp_ms();
+            let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+
+            if want_tick && (current_time_ms < clock_time) {
+                // let market = Py::new(py, bb)?.to_object(py);
+
+//                let args = PyTuple::new(py, [bb, clock_time]);
+                
+                let result = agent.call_method1("on_tick", (market, clock_time))?;
+                // call back tick
+            }
+
+            // すべてのイベントを呼び出し
+            // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
+            if want_event {
+                let bs = OrderType::from_str(bs).to_long_string();
+                //let on_event: &PyAny = agent.get_item("on_event")?.into();
+                let args = (time, bs, price, size);
+                agent.call_method1("on_event", args)?;
+                //on_event.call_method1(py, args)?;
+
+                // agent.call_method(name, args, kwargs)
+            }
+
+            let results = session.main_exec_event(time, OrderType::from_str(bs), price, size);
+
+            //call back event update
+            if want_update && results.len() != 0 {
+                for r in results {
+                    let result = PyOrderResult::from(r);
+
+                    let py_result = Py::new(py, result)?;
+                    let obj = py_result.to_object(py);
+
+                    let args = PyTuple::new(py, [&obj]);
+                    agent.call_method1("on_update", args)?;
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
+
+
+
+
 use crate::exchange::order::OrderResult;
 use crate::exchange::order::OrderStatus;
 
 #[pyclass]
 pub struct PyOrderResult {
-    #[pyo3(get,set)]
+    #[pyo3(get, set)]
     pub timestamp: i64,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub order_id: String,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub order_sub_id: String, // 分割された場合に利用
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub order_type: String,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub post_only: bool,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub create_time: i64,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub status: String,
-    #[pyo3(get,set)]
+    #[pyo3(get, set)]
     pub open_price: f64,
-    #[pyo3(get,set)]
-    pub close_price: f64,    
-    #[pyo3(get,set)]
-    pub size: f64,   // in usd
-    #[pyo3(get,set)]
+    #[pyo3(get, set)]
+    pub close_price: f64,
+    #[pyo3(get, set)]
+    pub size: f64, // in usd
+    #[pyo3(get, set)]
     pub volume: f64, //in BTC
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub profit: f64,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub fee: f64,
-    #[pyo3(get,set)]    
+    #[pyo3(get, set)]
     pub total_profit: f64,
 }
 
-
 impl PyOrderResult {
-    fn from(result: &OrderResult) -> Self{
+    fn from(result: &OrderResult) -> Self {
         return PyOrderResult {
             timestamp: result.timestamp,
             order_id: result.order_id.clone(),
@@ -286,25 +438,20 @@ impl PyOrderResult {
             volume: result.volume,
             profit: result.profit,
             fee: result.fee,
-            total_profit: result.total_profit
-        }
+            total_profit: result.total_profit,
+        };
     }
 }
-
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DummyBb>()?;
     m.add_class::<PyOrderResult>()?;
+    m.add_function(wrap_pyfunction!(sim_run, m)?)?;
 
     Ok(())
 }
-
-
-
-
-
 
 use crate::exchange::session::Session;
 
@@ -550,4 +697,3 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
 
 
 */
-

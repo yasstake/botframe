@@ -192,7 +192,8 @@ impl Order {
 /// ・　オーダー中のマージン計算
 /// ・　オーダーのExpire
 /// ・　オーダーの約定
-#[derive(Debug)]
+
+#[derive(Debug,Clone)]
 pub struct Orders {
     buy_queue: bool,
     q: Vec<Order>,

@@ -15,7 +15,7 @@ use crate::exchange::order::OrderResult;
 
 use log::debug;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 ///　ポジションの１項目
 /// 　Positionsでポジションリストを扱う。
 pub struct Position {
@@ -95,7 +95,7 @@ impl Position {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Positions {
     long_position: Position,
     short_position: Position,
@@ -225,7 +225,7 @@ impl Positions {
 }
 
 // TODO: ユーザのオリジナルなインジケータを保存できるようにする。
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Indicator {
     time: i64,
     key: String,
@@ -255,6 +255,7 @@ pub struct Indicator {
 ///     オーダーIDをつくり、返却
 ///
 
+#[derive(Clone)]
 #[derive(Debug)]
 pub struct SessionValue {
     _session_id: String,
@@ -491,7 +492,7 @@ impl SessionValue {
 
 
 pub trait Session {
-    fn get_timestamp_ms(&self) -> i64;
+    fn get_timestamp_ms(&mut self) -> i64;
     fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>;
     fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus>; 
 
@@ -509,7 +510,7 @@ pub trait Session {
 }
 
 impl Session for SessionValue {
-    fn get_timestamp_ms(&self) -> i64 {
+    fn get_timestamp_ms(&mut self) -> i64 {
         return self.current_time_ms;
     }
 
