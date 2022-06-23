@@ -209,6 +209,9 @@ impl DummyBb {
                     let args = PyTuple::new(py, [clock_time]);
                     let result = agent.call_method1("on_tick", args)?;                    
                     // call back tick
+
+                    // Get back ?
+                    // py_session = obj.extract::<PySession>()?;
                 }
                 }
 
