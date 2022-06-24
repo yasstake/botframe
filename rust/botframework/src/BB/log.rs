@@ -70,7 +70,7 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
             return f;
         }
         Err(e) => {
-            println!("try download");
+            // println!("try download");
         }
     }
 
@@ -85,7 +85,6 @@ fn test_list_cache_files() {
         let paths = fs::read_dir(data_dir).unwrap();
 
         for path in paths {
-            // println!("directory -> {}", path.unwrap().path().display());
             let path = path.unwrap();
             let name = path.path();
             let extension = name.extension().unwrap();
@@ -144,7 +143,6 @@ pub async fn load_log_file(
     callback: fn(m: &mut Market, t: &Trade),
     market: &mut Market,
 ) {
-    println!("Open:{} {} {}", yyyy, mm, dd);
     let f = open_exec_log_file(yyyy, mm, dd).await;
 
     let buf_read = std::io::BufReader::new(f);

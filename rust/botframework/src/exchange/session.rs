@@ -268,8 +268,8 @@ pub struct Indicator {
 pub struct SessionValue {
     _session_id: String,
     _order_index: i64,
-    pub sell_board_edge_price: f64,
-    pub buy_board_edge_price: f64,
+    pub sell_board_edge_price: f64,     // best ask price　買う時の価格
+    pub buy_board_edge_price: f64,      // best bit price 　売る時の価格
     pub current_time_ms: i64,
     pub long_orders: Orders,
     pub short_orders: Orders,
@@ -298,6 +298,9 @@ impl SessionValue {
         };
     }
 
+    pub fn set_agent_name(&mut self, name: String) {
+        self._session_id = name;
+    }   
 
     pub fn get_center_price(&self) -> f64 {
         if self.buy_board_edge_price == 0.0 || self.sell_board_edge_price == 0.0 {
@@ -468,7 +471,7 @@ impl SessionValue {
         let upper = index / 1000;
         let lower: i64 = index % 1000;
 
-        let id = format! {"{:012}-{:03}", upper, lower};
+        let id = format! {"{:04}-{:04}-{:04}", self._session_id, upper, lower};
 
         return id.to_string();
     }

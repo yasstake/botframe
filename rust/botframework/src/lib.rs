@@ -94,6 +94,8 @@ use polars_core::datatypes::AnyValue::Float64;
 use crate::exchange::session::SessionValue;
 use pyo3::types::PyList;
 
+use crate::exchange::ohlcv_from_df;
+
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
@@ -175,40 +177,82 @@ use polars::prelude::Float64Type;
 #[pymethods]
 impl CopySession {
     #[getter]
+    ///　現在のセッション時間をmsで取得する。
     fn get_current_time(&self) -> i64 {
         return self.current_time_ms;
     }
 
     #[getter]
-    fn get_sell_board_edge_price(&self) -> f64 {
+    ///　 直近の約定から想定される売り板の最安値（Best Ask価格）を取得する。
+    fn get_sell_edge_price(&self) -> f64 {
         return self.sell_board_edge_price;
     }
 
     #[getter]
-    fn get_buy_board_edge_price(&self) -> f64 {
+    ///　 直近の約定から想定される買い板の最高値（Best Bit価格）を取得する。    
+    fn get_buy_edge_price(&self) -> f64 {
         return self.buy_board_edge_price;
     }
 
     #[getter]
+    /// 未約定でキューに入っているlong orderのサイズ（合計）
+    fn get_long_order_size(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    ///　未約定のlong order一覧
     fn get_long_orders(&self) -> Vec<Order> {
         return self.long_orders.get_q();
     }
 
     #[getter]
+    /// 未約定でキューに入っているshort orderのサイズ（合計）
+    fn get_short_order_size(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    ///　未約定のshort order一覧    
     fn get_short_orders(&self) -> Vec<Order> {
         return self.short_orders.get_q();
     }
 
     #[getter]
-    fn get_long_position(&self) -> (f64, f64) {
+    /// long/short合計のポジション損益（手数料込み）
+    fn get_pos_balance(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    /// longポジションのサイズ（合計）
+    fn get_long_pos_size(&self) -> (f64, f64) {
         return self.positions.get_long_position();
     }
 
     #[getter]
-    fn get_short_position(&self) -> (f64, f64) {
+    ///　long ポジションの平均購入単価
+    fn get_long_pos_avrage_price(&self) -> (f64, f64) {
+        return self.positions.get_long_position();
+    }
+
+    #[getter]
+    /// shortポジションのサイズ（合計）
+    fn get_short_pos_size(&self) -> (f64, f64) {
         return self.positions.get_short_position();
     }
 
+    #[getter]
+    /// Shortポジションの平均購入単価
+    fn get_short_pos_avarage_price(&self) -> (f64, f64) {
+        return self.positions.get_short_position();
+    }
+
+    /// 現在時刻から width_sec　幅で, count個 OHLCVバーを作る。
+    /// Index=0が最新。バーの幅の中にデータが欠落する場合はバーが欠落する（countより少なくなる）
+    /// またバーの幅が小さく、バーの数も少ない場合はバーが生成できるエラになる。
+    /// TODO: きちんとしたエラーコードを返す。
+    /// TODO:  １分の刻みデータを０分でクエリすると最大１分（５９秒）分未来データが含まれてしまう。
     fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
         if width_sec < self._ohlcv_width {
             println!("ohlcv width is shorter than tick, consider use ohlcv_raw() instead");
@@ -269,7 +313,7 @@ impl DummyBb {
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
 
-    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
+    fn run(&mut self, agent: &PyAny, name: String, interval_sec: i64) -> PyResult<()> {
         let methods_list = agent.dir();
 
         let mut want_tick = false;
@@ -324,6 +368,7 @@ impl DummyBb {
 
         Python::with_gil(|py| {
             let mut py_session = MainSession::from(self);
+            &py_session.session.set_agent_name(name);
 
             let skip_until = self.get_sim_start_ms();
 
@@ -425,6 +470,8 @@ impl DummyBb {
         })
     }
 
+
+
     //--------------------------------------------------------------------------------------------
     // Market History API
     // 過去ndays分のログをダウンロードしてロードする。
@@ -436,11 +483,21 @@ impl DummyBb {
             .block_on(self.market.download_exec_log_ndays(ndays as i32));
     }
 
-    fn log_ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+    /// 開始時間と終了時間、間隔を指定してohlcvをつくる。
+    /// 出力は時間順。
+    fn ohlcv(&mut self, start_time_ms: i64, end_time_ms: i64, width_sec: i64) -> Py<PyArray2<f64>> {
+        let df = &self.market._df();
+
+        let df = ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec, false);
+
+        let array: ndarray::Array2<f64> = df
+            .select(&["time", "open", "high", "low", "close", "vol"])
+            .unwrap()
+            .to_ndarray::<Float64Type>()
+            .unwrap();
+
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
-
-        let array = self.market._ohlcv(current_time_ms, width_sec, count);
 
         let py_array2: &PyArray2<f64> = array.into_pyarray(py);
 
@@ -463,6 +520,10 @@ impl DummyBb {
         }
 
         return Ok(list.to_object(py));
+    }
+
+    fn reset_transaction(&mut self) {
+        &self.order_history.clear();
     }
 
     #[getter]

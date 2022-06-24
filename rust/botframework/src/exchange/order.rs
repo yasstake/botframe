@@ -1,3 +1,5 @@
+
+#[pyclass]
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum OrderType {
     Buy,
@@ -20,7 +22,10 @@ impl OrderType {
             }
         }
     }
+}
 
+#[pymethods]
+impl OrderType {
     pub fn to_str(&self) -> &str {
         match self {
             OrderType::Buy => return &"B",
@@ -154,14 +159,21 @@ use pyo3::prelude::pyclass;
 #[pyclass]
 pub struct Order {
     _order_index: i64,
+    #[pyo3(get, set)]    
     pub create_time: i64, // in ms
+    #[pyo3(get, set)]    
     pub order_id: String, // YYYY-MM-DD-SEQ
+    #[pyo3(get, set)]    
     pub order_type: OrderType,
+    #[pyo3(get, set)]    
     pub post_only: bool,
+    #[pyo3(get, set)]    
     pub valid_until: i64, // in ms
+    #[pyo3(get, set)]    
     pub price: f64,
+    #[pyo3(get, set)]
     pub size: f64,        // in USD
-//    pub taker: bool,      // takerの場合true, falseの場合はmakerとなる。
+    #[pyo3(get, set)]
     pub remain_size: f64, // ログから想定した未約定数。０になったら全部約定。本来は分割で約定するが、０となの全部約定時のみ発生。
 }
 

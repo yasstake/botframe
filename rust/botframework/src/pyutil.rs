@@ -4,6 +4,7 @@ use std::fmt::Binary;
 
 use chrono::NaiveDateTime;
 use chrono::NaiveDate;
+use time::Duration;
 
 use pyo3::pyfunction;
 
@@ -19,10 +20,9 @@ pub fn YYYYMMDD(yy: i64, mm: i64, dd: i64) -> i64 {
 /// 時刻HH:MMのシリアル値を返す。
 #[pyfunction]
 pub fn HHMM(hh: i64, mm:i64) -> i64{
-    let date = NaiveDate::from_ymd(0, 0, 0);
-    let datetime: NaiveDateTime  = date.and_hms(hh as u32, mm as u32, 0);
+    let duration = Duration::hours(hh) + Duration::minutes(mm);
 
-    return datetime.timestamp_millis();
+    return duration.whole_seconds() * 1_000;
 }
 
 /// 時刻のシリアル値の時刻をPrintableな文字列で返す（UTC)
@@ -51,6 +51,7 @@ mod UtilTest{
         assert_eq!(HHMM(0,0), 0);
         assert_eq!(HHMM(0,1), 1 * 60 * 1_000);        
         assert_eq!(HHMM(1,0), 60 * 60 * 1_000);                
+        assert_eq!(HHMM(10,1),10 * 60 * 60 * 1_000  + 1 * 60 * 1_000);                
     }
 
     #[test]

@@ -95,6 +95,7 @@ async fn test_download_log() {
     load_log_file(2022, 6, 3, insert_callback, &mut market).await;
 }
 
+/*
 #[tokio::main]
 #[test]
 pub async fn make_market() {
@@ -113,6 +114,7 @@ pub async fn make_market() {
 
     // insert log to market
 }
+*/
 
 
 #[tokio::test]

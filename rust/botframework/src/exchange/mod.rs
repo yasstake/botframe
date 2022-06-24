@@ -108,7 +108,7 @@ pub fn ohlcv_df_from_raw(
     };
     let end_time_ms = current_time_ms;
 
-    return ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
+    return ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec, true);
 }
 
 pub fn ohlcv_df_from_ohlc(
@@ -133,11 +133,12 @@ pub fn ohlcv_df_from_ohlc(
     return ohlcv_from_ohlcv(df, start_time_ms, end_time_ms, width_sec);
 }
 
-fn ohlcv_from_df(
+pub fn ohlcv_from_df(
     df: &DataFrame,
     start_time_ms: i64,
     end_time_ms: i64,
     width_sec: i64,
+    descending: bool
 ) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
     let t = df.column("time").unwrap();
@@ -167,7 +168,7 @@ fn ohlcv_from_df(
         .sort(
             "time",
             SortOptions {
-                descending: true,
+                descending: descending,
                 nulls_last: false,
             },
         )
@@ -265,7 +266,7 @@ impl Market {
             .vstack(&self.trade_buffer.to_data_frame())
         {
             Ok(df) => {
-                println!("append{}", df.shape().0);
+                // println!("append{}", df.shape().0);
                 self.trade_history = df;
                 //self.trade_buffer = TradeBlock::new();
                 self.trade_buffer.clear();
