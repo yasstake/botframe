@@ -14,8 +14,11 @@ extern crate anyhow;
 extern crate directories;
 extern crate time;
 
+
+
 pub mod bb;
 pub mod exchange;
+pub mod pyutil;
 
 use chrono::NaiveDateTime;
 use polars::prelude::Series;
@@ -115,14 +118,22 @@ impl MainSession {
         };
     }
 
-    fn get_timestamp_ms(&mut self) -> i64 {
-        return self.session.get_timestamp_ms();
-    }
+
 }
 
 impl MainSession {
     fn get_session(&mut self) -> &mut SessionValue {
         return &mut self.session;
+    }
+}
+
+impl Session for MainSession {
+    fn get_timestamp_ms(&mut self) -> i64 {
+        return self.session.get_timestamp_ms();
+    }
+
+    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus> {
+        return self.session.make_order(side, price, size, duration_ms);
     }
 }
 
@@ -353,11 +364,12 @@ impl DummyBb {
                 let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
                 if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
-                    if self._debug_loop_count == 1 {
-                        return Ok(())
-                    }
-                    else if self._debug_loop_count != 0 {
-                        self._debug_loop_count -= 1;    
+
+                    if self._debug_loop_count != 0 {
+                        self._debug_loop_count -= 1;
+                        if self._debug_loop_count == 0 {
+                            return Ok(());
+                        }    
                     }
 
                     let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
@@ -367,6 +379,7 @@ impl DummyBb {
 
                     match result.extract::<PyOrder>() {
                         Ok(order) => {
+                            &py_session.make_order(order.side, order.price, order.size, order.duration_ms);
                             println!("Make ORDER {:?}", order);
                         }
                         Err(e) => {
@@ -465,9 +478,14 @@ impl DummyBb {
 
     #[setter]
     fn set_debug_loop_count(&mut self, count: i64) {
-        self._debug_loop_count = count;
+        // トリッキーではあるが、カウントダウン側とのバランスをとって＋１
+        self._debug_loop_count = count + 1;
     }
 }
+
+
+
+
 
 #[pyfunction]
 fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
@@ -660,6 +678,9 @@ impl PyOrder {
     }
 }
 
+use crate::pyutil::HHMM;
+use crate::pyutil::YYYYMMDD;
+use crate::pyutil::PrintTime;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -668,6 +689,9 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyOrderResult>()?;
     m.add_class::<PyOrder>()?;
     // m.add_function(wrap_pyfunction!(sim_run, m)?)?;
+    m.add_function(wrap_pyfunction!(HHMM, m)?)?;
+    m.add_function(wrap_pyfunction!(YYYYMMDD, m)?)?;
+    m.add_function(wrap_pyfunction!(PrintTime, m)?)?;            
 
     Ok(())
 }

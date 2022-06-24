@@ -496,40 +496,9 @@ impl SessionValue {
         order.fee = order.size * 0.0006;
         order.total_profit = order.profit - order.fee;
     }
-}
-
-
-
-pub trait Session {
-    fn new_from() -> Self;
-    fn get_timestamp_ms(&mut self) -> i64;
-    fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>;
-    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus>; 
-
-    /*
-    fn get_active_orders(&self) -> [Order];
-    fn get_posision(&self) -> (Position, Position); // long/short
-    fn diposit(&self, balance: f64);
-    fn get_balance(&self) -> f64;
-    fn get_avairable_balance(&self) -> f64;
-    fn set_indicator(&self, key: &str, value: f64); // TODO: implement later
-    fn result() -> String; // evaluate session result
-    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) -> SessionEventType;
-    */
-    // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
-}
-
-impl Session for SessionValue {
-    fn new_from() -> Self {
-        return SessionValue::new();
-    }
-
-    fn get_timestamp_ms(&mut self) -> i64 {
-        return self.current_time_ms;
-    }
 
     /* TODO: マージンの計算とFundingRate計算はあとまわし */
-    fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>{
+    pub fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult>{
         self.tick_order_history.clear();
 
         self.exec_event_update_time(current_time_ms, order_type, price, size);
@@ -577,6 +546,32 @@ impl Session for SessionValue {
         return &self.tick_order_history;
     }
 
+}
+
+
+
+pub trait Session {
+    fn get_timestamp_ms(&mut self) -> i64;
+    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus>; 
+
+    /*
+    fn get_active_orders(&self) -> [Order];
+    fn get_posision(&self) -> (Position, Position); // long/short
+    fn diposit(&self, balance: f64);
+    fn get_balance(&self) -> f64;
+    fn get_avairable_balance(&self) -> f64;
+    fn set_indicator(&self, key: &str, value: f64); // TODO: implement later
+    fn result() -> String; // evaluate session result
+    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) -> SessionEventType;
+    */
+    // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
+}
+
+impl Session for SessionValue {
+
+    fn get_timestamp_ms(&mut self) -> i64 {
+        return self.current_time_ms;
+    }
 
 
     /// オーダー作りオーダーリストへ追加する。
