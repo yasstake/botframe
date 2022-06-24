@@ -17,8 +17,7 @@ class Agent:
         #ohlcv = bc.log_ohlcv(time_ms, 60, 100)
 
         #print(ohlcv)
-        return rbot.Order("buy", 1000, 100, 600)
-
+        return rbot.Order("sell", 1000, 100, 600)
 
     
     def on_update(self, result):
@@ -38,5 +37,7 @@ bb.run(agent, 60)
 dir(bb)
 
 print(bb.transactions)
+for item in bb.transactions:
+    print(item.status)
 
 
