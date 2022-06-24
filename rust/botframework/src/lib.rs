@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use exchange::MarketInfo;
 use exchange::ohlcv_df_from_ohlc;
+use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_DebugFlag;
 use pyo3::ffi::Py_SetRecursionLimit;
@@ -14,8 +14,6 @@ extern crate anyhow;
 extern crate directories;
 extern crate time;
 
-
-
 pub mod bb;
 pub mod exchange;
 pub mod pyutil;
@@ -23,7 +21,6 @@ pub mod pyutil;
 use chrono::NaiveDateTime;
 use polars::prelude::Series;
 use polars_lazy::prelude::*;
-
 
 /*
 Python からよびださされるモジュール
@@ -103,6 +100,7 @@ struct DummyBb {
     _sim_start_ms: i64,
     _sim_end_ms: i64,
     _debug_loop_count: i64,
+    order_history: Vec<OrderResult>,
 }
 
 struct MainSession {
@@ -117,14 +115,6 @@ impl MainSession {
             session: SessionValue::new(),
         };
     }
-
-
-}
-
-impl MainSession {
-    fn get_session(&mut self) -> &mut SessionValue {
-        return &mut self.session;
-    }
 }
 
 impl Session for MainSession {
@@ -132,7 +122,13 @@ impl Session for MainSession {
         return self.session.get_timestamp_ms();
     }
 
-    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64) -> Result<(), OrderStatus> {
+    fn make_order(
+        &mut self,
+        side: OrderType,
+        price: f64,
+        size: f64,
+        duration_ms: i64,
+    ) -> Result<(), OrderStatus> {
         return self.session.make_order(side, price, size, duration_ms);
     }
 }
@@ -152,7 +148,7 @@ struct CopySession {
     short_orders: Orders,
     positions: Positions,
     wallet_balance: f64, // 入金額
-    _ohlcv_width: i64
+    _ohlcv_width: i64,
 }
 
 impl CopySession {
@@ -167,7 +163,7 @@ impl CopySession {
             short_orders: s.session.short_orders.clone(),
             positions: s.session.positions.clone(),
             wallet_balance: s.session.wallet_balance,
-            _ohlcv_width: ohlcv_width
+            _ohlcv_width: ohlcv_width,
         };
     }
 }
@@ -175,7 +171,6 @@ impl CopySession {
 use crate::exchange::ohlcv_df_from_raw;
 use crate::exchange::order::Order;
 use polars::prelude::Float64Type;
-
 
 #[pymethods]
 impl CopySession {
@@ -238,7 +233,6 @@ impl CopySession {
         return py_array2.to_owned();
     }
 
-
     fn ohlcv_raw(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
         let current_time_ms = self.get_current_time();
         let gil = pyo3::Python::acquire_gil();
@@ -264,11 +258,12 @@ impl CopySession {
 impl DummyBb {
     #[new]
     fn new() -> Self {
-        return DummyBb { 
+        return DummyBb {
             market: Bb::new(),
             _sim_start_ms: 0,
             _sim_end_ms: 0,
-            _debug_loop_count: 0
+            _debug_loop_count: 0,
+            order_history: vec![],
         };
     }
     //--------------------------------------------------------------------------------------------
@@ -306,7 +301,7 @@ impl DummyBb {
         let end_time_ms = self.market.end_time();
 
         if self.get_sim_start_ms() == 0 {
-            self.set_sim_start_ms(start_time_ms + 60 * 1_000);  // warm up 60 sec
+            self.set_sim_start_ms(start_time_ms + 60 * 1_000); // warm up 60 sec
         }
 
         if self.get_sim_end_ms() == 0 {
@@ -333,8 +328,6 @@ impl DummyBb {
             let skip_until = self.get_sim_start_ms();
 
             for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
-    
-
                 let time = t.unwrap();
                 let price = p.unwrap();
                 let size = s.unwrap();
@@ -346,7 +339,7 @@ impl DummyBb {
 
                 log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
 
-                let warm_up_ok_flag = if skip_until < time {true} else {false};
+                let warm_up_ok_flag = if skip_until < time { true } else { false };
 
                 // すべてのイベントを呼び出し
                 // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
@@ -357,19 +350,17 @@ impl DummyBb {
                     agent.call_method1("on_event", args)?;
                 }
 
-
                 // TODO: May skip wam up time
                 // 最初のインターバル毎の時刻で呼び出し。
                 let current_time_ms = py_session.get_timestamp_ms();
                 let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
                 if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
-
                     if self._debug_loop_count != 0 {
                         self._debug_loop_count -= 1;
                         if self._debug_loop_count == 0 {
                             return Ok(());
-                        }    
+                        }
                     }
 
                     let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
@@ -379,28 +370,28 @@ impl DummyBb {
 
                     match result.extract::<PyOrder>() {
                         Ok(order) => {
-                            &py_session.make_order(order.side, order.price, order.size, order.duration_ms);
+                            &py_session.make_order(
+                                order.side,
+                                order.price,
+                                order.size,
+                                order.duration_ms,
+                            );
                             println!("Make ORDER {:?}", order);
                         }
-                        Err(e) => {
-
-                        }
+                        Err(e) => {}
                     }
 
-                    match result.downcast::<PyList>(){
+                    match result.downcast::<PyList>() {
                         Ok(list) => {
                             for item in list.iter() {
                                 println!("{:?}", item);
                             }
                         }
-                        Err(e) => {
-
-                        }
+                        Err(e) => {}
                     }
                 }
 
-
-                let results = py_session.get_session().main_exec_event(
+                let results = py_session.session.main_exec_event(
                     time,
                     OrderType::from_str(bs),
                     price,
@@ -410,6 +401,7 @@ impl DummyBb {
                 //call back event update
                 if want_update && results.len() != 0 {
                     for r in results {
+                        self.order_history.push(r.clone());                        
                         let result = PyOrderResult::from(r);
 
                         let py_result = Py::new(py, result)?;
@@ -418,8 +410,17 @@ impl DummyBb {
                         let args = PyTuple::new(py, [&obj]);
                         agent.call_method1("on_update", args)?;
                     }
+
+
                 }
             }
+            // self.order_history = py_session.session.order_history;
+
+            // println!("--");
+
+
+            //println!("{:?}", self.order_history);
+
             Ok(())
         })
     }
@@ -447,6 +448,24 @@ impl DummyBb {
     }
 
     #[getter]
+    fn get_transactions(&self) -> PyResult<PyObject> {
+        let gil = pyo3::Python::acquire_gil();
+        let py = gil.python();
+
+        let list = PyList::empty(py);
+
+        for item in &self.order_history {
+            let result = PyOrderResult::from(item);
+            let py_result = Py::new(py, result)?;
+            let obj = py_result.to_object(py);
+
+            list.append(obj)?;
+        }
+
+        return Ok(list.to_object(py));
+    }
+
+    #[getter]
     fn get_log_start_ms(&self) -> PyResult<i64> {
         return Ok(self.market.start_time());
     }
@@ -462,7 +481,7 @@ impl DummyBb {
     }
 
     #[getter]
-    fn get_sim_start_ms(&self) -> i64{
+    fn get_sim_start_ms(&self) -> i64 {
         return self._sim_start_ms;
     }
 
@@ -472,7 +491,7 @@ impl DummyBb {
     }
 
     #[getter]
-    fn get_sim_end_ms(&self) -> i64{
+    fn get_sim_end_ms(&self) -> i64 {
         return self._sim_end_ms;
     }
 
@@ -482,10 +501,6 @@ impl DummyBb {
         self._debug_loop_count = count + 1;
     }
 }
-
-
-
-
 
 #[pyfunction]
 fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
@@ -540,8 +555,6 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         let mut session = bb.market.market.get_session();
 
         for (((t, p), s), b) in time.into_iter().zip(price).zip(size).zip(bs) {
-
-
             let time = t.unwrap();
             let price = p.unwrap();
             let size = s.unwrap();
@@ -590,6 +603,7 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
                 }
             }
         }
+
         Ok(())
     })
 }
@@ -650,7 +664,7 @@ impl PyOrderResult {
     }
 }
 
-#[pyclass(name="Order", module="rbot")]
+#[pyclass(name = "Order", module = "rbot")]
 #[derive(Debug, Clone)]
 struct PyOrder {
     side: OrderType,
@@ -664,23 +678,28 @@ struct PyOrder {
 impl PyOrder {
     #[new]
     fn new(side: String, price: f64, size: f64, valid_sec: i64) -> Self {
-        return PyOrder{
+        return PyOrder {
             side: OrderType::from_str(side.as_str()),
-            price: price, 
+            price: price,
             size: size,
-            duration_ms: valid_sec * 1_000
-        }    
+            duration_ms: valid_sec * 1_000,
+        };
     }
 
-    fn __str__ (&self) -> PyResult<String> {
-        return Ok(format!("side: {}, price: {}, size: {}, duration_ms: {}", 
-            self.side.to_long_string(), self.price, self.size, self.duration_ms));
+    fn __str__(&self) -> PyResult<String> {
+        return Ok(format!(
+            "side: {}, price: {}, size: {}, duration_ms: {}",
+            self.side.to_long_string(),
+            self.price,
+            self.size,
+            self.duration_ms
+        ));
     }
 }
 
+use crate::pyutil::PrintTime;
 use crate::pyutil::HHMM;
 use crate::pyutil::YYYYMMDD;
-use crate::pyutil::PrintTime;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -691,7 +710,7 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     // m.add_function(wrap_pyfunction!(sim_run, m)?)?;
     m.add_function(wrap_pyfunction!(HHMM, m)?)?;
     m.add_function(wrap_pyfunction!(YYYYMMDD, m)?)?;
-    m.add_function(wrap_pyfunction!(PrintTime, m)?)?;            
+    m.add_function(wrap_pyfunction!(PrintTime, m)?)?;
 
     Ok(())
 }
