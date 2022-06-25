@@ -226,6 +226,7 @@ pub struct Orders {
 }
 
 use std::cmp::Ordering;
+use std::iter::Iterator;
 
 impl Orders {
     pub fn new(buy_order: bool) -> Self {
@@ -237,6 +238,11 @@ impl Orders {
 
     pub fn get_q(&self) -> Vec<Order> {
         return self.q.clone();
+    }
+
+    pub fn get_size(&self) -> f64 {
+        let sum: f64 = self.q.iter().fold(0.0, |sum, item| sum + item.size);
+        return sum;
     }
 
     /// オーダーをキューに入れる。
@@ -319,7 +325,7 @@ impl Orders {
                 let close_order =
                     OrderResult::from_order(current_time_ms, &order, OrderStatus::ExpireOrder);
 
-                println!("Order expire {:?}", close_order);
+                // println!("Order expire {:?}", close_order);
 
                 return Ok(close_order);
             }
@@ -344,7 +350,6 @@ impl Orders {
         }
 
         if self.execute_remain_size(price, size) {
-            println!("complete order");
             return self.pop_close_order(current_time_ms);
         }
 

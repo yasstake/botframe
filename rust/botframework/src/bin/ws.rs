@@ -177,8 +177,8 @@ async fn ws_loop(url_str: &str) -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
 
+#[tokio::main]
 async fn main() {
     println!("start");
 

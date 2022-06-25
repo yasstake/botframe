@@ -129,10 +129,12 @@ impl Session for MainSession {
         side: OrderType,
         price: f64,
         size: f64,
-        message: String, 
+        message: String,
         duration_ms: i64,
     ) -> Result<(), OrderStatus> {
-        return self.session.make_order(side, price, size, message, duration_ms);
+        return self
+            .session
+            .make_order(side, price, size, message, duration_ms);
     }
 }
 
@@ -151,11 +153,11 @@ struct CopySession {
     short_orders: Orders,
     positions: Positions,
     wallet_balance: f64, // 入金額
-    _ohlcv_width: i64,
+    _ohlcv_window: i64,
 }
 
 impl CopySession {
-    fn from(s: &MainSession, ohlcv_df: &DataFrame, ohlcv_width: i64) -> Self {
+    fn from(s: &MainSession, ohlcv_df: &DataFrame, ohlcv_window: i64) -> Self {
         return CopySession {
             df: s.df.clone(),
             df_ohlcv: ohlcv_df.clone(),
@@ -166,7 +168,7 @@ impl CopySession {
             short_orders: s.session.short_orders.clone(),
             positions: s.session.positions.clone(),
             wallet_balance: s.session.wallet_balance,
-            _ohlcv_width: ohlcv_width,
+            _ohlcv_window: ohlcv_window,
         };
     }
 }
@@ -198,7 +200,7 @@ impl CopySession {
     #[getter]
     /// 未約定でキューに入っているlong orderのサイズ（合計）
     fn get_long_order_size(&self) -> f64 {
-        return 0.0;
+        return self.long_orders.get_size();
     }
 
     #[getter]
@@ -210,7 +212,7 @@ impl CopySession {
     #[getter]
     /// 未約定でキューに入っているshort orderのサイズ（合計）
     fn get_short_order_size(&self) -> f64 {
-        return 0.0;
+        return self.short_orders.get_size();
     }
 
     #[getter]
@@ -227,44 +229,46 @@ impl CopySession {
 
     #[getter]
     /// longポジションのサイズ（合計）
-    fn get_long_pos_size(&self) -> (f64, f64) {
-        return self.positions.get_long_position();
+    fn get_long_pos_size(&self) -> f64 {
+        return self.positions.get_long_position_size();
     }
 
     #[getter]
     ///　long ポジションの平均購入単価
-    fn get_long_pos_avrage_price(&self) -> (f64, f64) {
-        return self.positions.get_long_position();
+    fn get_long_pos_avrage_price(&self) -> f64 {
+        return self.positions.get_long_position_price();
     }
 
     #[getter]
     /// shortポジションのサイズ（合計）
-    fn get_short_pos_size(&self) -> (f64, f64) {
-        return self.positions.get_short_position();
+    fn get_short_pos_size(&self) -> f64 {
+        return self.positions.get_short_position_size();
     }
 
     #[getter]
     /// Shortポジションの平均購入単価
-    fn get_short_pos_avarage_price(&self) -> (f64, f64) {
-        return self.positions.get_short_position();
+    fn get_short_pos_avarage_price(&self) -> f64 {
+        return self.positions.get_short_position_price();
     }
 
     /// 現在時刻から width_sec　幅で, count個 OHLCVバーを作る。
     /// Index=0が最新。バーの幅の中にデータが欠落する場合はバーが欠落する（countより少なくなる）
     /// またバーの幅が小さく、バーの数も少ない場合はバーが生成できるエラになる。
     /// TODO: きちんとしたエラーコードを返す。
-    /// TODO:  １分の刻みデータを０分でクエリすると最大１分（５９秒）分未来データが含まれてしまう。
     fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
-        if width_sec < self._ohlcv_width {
+        if width_sec < self._ohlcv_window {
             println!("ohlcv width is shorter than tick, consider use ohlcv_raw() instead");
         }
 
-        let current_time_ms = self.get_current_time();
+        let mut current_time_ms = self.get_current_time();
+        // OHLCVの最新のwindowには将来値がふくまれるのカットする。
+        let clock_time = (current_time_ms % &self._ohlcv_window) * &self._ohlcv_window;
+        current_time_ms = clock_time;
+
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
 
         let df = &self.df_ohlcv;
-
         let df = ohlcv_df_from_ohlc(df, current_time_ms, width_sec, count);
 
         let array: ndarray::Array2<f64> = df
@@ -422,7 +426,7 @@ impl DummyBb {
                                 order.message.clone(),
                                 order.duration_ms,
                             );
-                            println!("Make ORDER {:?}", order);
+                            // println!("Make ORDER {:?}", order);
                         }
                         Err(e) => {}
                     }
@@ -437,17 +441,15 @@ impl DummyBb {
                     }
                 }
 
-                let results = py_session.session.main_exec_event(
-                    time,
-                    OrderType::from_str(bs),
-                    price,
-                    size,
-                );
+                let results =
+                    py_session
+                        .session
+                        .main_exec_event(time, OrderType::from_str(bs), price, size);
 
                 //call back event update
                 if want_update && results.len() != 0 {
                     for r in results {
-                        self.order_history.push(r.clone());                        
+                        self.order_history.push(r.clone());
                         let result = PyOrderResult::from(r);
 
                         let py_result = Py::new(py, result)?;
@@ -456,22 +458,11 @@ impl DummyBb {
                         let args = PyTuple::new(py, [&obj]);
                         agent.call_method1("on_update", args)?;
                     }
-
-
                 }
             }
-            // self.order_history = py_session.session.order_history;
-
-            // println!("--");
-
-
-            //println!("{:?}", self.order_history);
-
             Ok(())
         })
     }
-
-
 
     //--------------------------------------------------------------------------------------------
     // Market History API
@@ -704,7 +695,7 @@ pub struct PyOrderResult {
     #[pyo3(get, set)]
     pub total_profit: f64,
     #[pyo3(get, set)]
-    pub message: String    
+    pub message: String,
 }
 
 impl PyOrderResult {
@@ -724,7 +715,7 @@ impl PyOrderResult {
             profit: result.profit,
             fee: result.fee,
             total_profit: result.total_profit,
-            message: result.message.clone()
+            message: result.message.clone(),
         };
     }
 }
@@ -968,102 +959,169 @@ fn test_python_method_search() {
     });
 }
 
-
-
 #[cfg(test)]
 mod CopySessionTest {
+    use super::*;
+    use crate::exchange::{Market, MarketInfo};
     use crate::MainSession;
     use crate::{exchange::session::SessionValue, CopySession};
-    use crate::exchange::{Market, MarketInfo};
 
-    fn prepare() {
-
-    }
-
-
-    #[test]
-    fn test_get_current_time() {
-        // let mut session = SessionValue::new();
+    fn make_session() -> CopySession {
         let mut market = Market::new();
         let main_session = MainSession::from(market._df());
-        let copy_session = 
-            CopySession::from(&main_session, &market._df(), 1);
+        let copy_session = CopySession::from(&main_session, &market._df(), 1);
 
-        copy_session.get_current_time();        
-        
+        return copy_session;
     }
 
-    /*
+    fn make_long_order(timestamp: i64, price: f64, size: f64) -> Order {
+        return Order::new(
+            timestamp,
+            "1".to_string(),
+            OrderType::Buy,
+            true,
+            1000,
+            price,
+            size,
+            "first".to_string(),
+            false,
+        );
+    }
+
+    fn make_short_order(timestamp: i64, price: f64, size: f64) -> Order {
+        return Order::new(
+            timestamp,
+            "1".to_string(),
+            OrderType::Sell,
+            true,
+            1000,
+            price,
+            size,
+            "first".to_string(),
+            false,
+        );
+    }
+
+    #[test]
     ///　現在のセッション時間をmsで取得する。
-    fn get_current_time(&self) -> i64 {
-        return self.current_time_ms;
+    fn test_get_current_time() {
+        let mut session = make_session();
+
+        assert_eq!(session.get_current_time(), 0);
+
+        session.current_time_ms = 10;
+        assert_eq!(session.get_current_time(), 10);
     }
 
-    #[getter]
+    #[test]
     ///　 直近の約定から想定される売り板の最安値（Best Ask価格）を取得する。
-    fn get_sell_edge_price(&self) -> f64 {
-        return self.sell_board_edge_price;
+    ///
+
+    fn test_get_sell_buy_edge_price() {
+        let mut session = make_session();
+
+        assert_eq!(session.get_sell_edge_price(), 0.0);
+
+        session.sell_board_edge_price = 12.0;
+        assert_eq!(session.get_sell_edge_price(), 12.0);
     }
 
-    #[getter]
+    #[test]
     ///　 直近の約定から想定される買い板の最高値（Best Bit価格）を取得する。    
-    fn get_buy_edge_price(&self) -> f64 {
-        return self.buy_board_edge_price;
+    fn test_get_buy_edge_price() {
+        let mut session = make_session();
+
+        assert_eq!(session.get_buy_edge_price(), 0.0);
+
+        session.buy_board_edge_price = 13.0;
+        assert_eq!(session.get_buy_edge_price(), 13.0);
     }
 
-    #[getter]
+    #[test]
     /// 未約定でキューに入っているlong orderのサイズ（合計）
-    fn get_long_order_size(&self) -> f64 {
-        return 0.0;
+    fn test_get_long_order_size() {
+        let mut session = make_session();
+
+        session
+            .long_orders
+            .queue_order(&make_long_order(1, 10.0, 12.0));
+        assert_eq!(session.get_long_order_size(), 12.0);
+
+        session
+            .long_orders
+            .queue_order(&make_long_order(1, 10.0, 20.5));
+        assert_eq!(session.get_long_order_size(), 32.5);
     }
 
-    #[getter]
+    #[test]
     ///　未約定のlong order一覧
-    fn get_long_orders(&self) -> Vec<Order> {
-        return self.long_orders.get_q();
+    fn get_long_orders() {
+        let mut session = make_session();
+        session.get_long_orders();
+        assert!(false, "not tested");
     }
 
-    #[getter]
+    #[test]
     /// 未約定でキューに入っているshort orderのサイズ（合計）
-    fn get_short_order_size(&self) -> f64 {
-        return 0.0;
+    fn get_short_order_size() {
+        let mut session = make_session();
+
+        session
+            .short_orders
+            .queue_order(&make_short_order(1, 100.0, 50.5));
+        assert_eq!(session.get_short_order_size(), 50.5);
+
+        session
+            .short_orders
+            .queue_order(&make_short_order(1, 1.1, 2.5));
+        assert_eq!(session.get_short_order_size(), 101.1);
     }
 
-    #[getter]
+    #[test]
     ///　未約定のshort order一覧    
-    fn get_short_orders(&self) -> Vec<Order> {
-        return self.short_orders.get_q();
+    fn get_short_orders() {
+        let mut session = make_session();
+        session.get_short_orders();
+        assert!(false, "not tested");
     }
 
-    #[getter]
+    #[test]
     /// long/short合計のポジション損益（手数料込み）
-    fn get_pos_balance(&self) -> f64 {
-        return 0.0;
+    fn get_pos_balance() {
+        let mut session = make_session();
+        assert!(false, "not tested");
     }
-
-    #[getter]
+    #[test]
     /// longポジションのサイズ（合計）
-    fn get_long_pos_size(&self) -> (f64, f64) {
-        return self.positions.get_long_position();
+    fn get_long_pos_size_price() {
+        let mut session = make_session();
+
+        let order = make_long_order(1, 100.0, 10.0);
+        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder);
+
+        session
+            .positions
+            .long_position
+            .open_position(&mut order_result);
+
+        assert_eq!(session.get_long_pos_size(), 10.0);
+        assert_eq!(session.get_long_pos_avrage_price(), 100.0);
     }
 
-    #[getter]
-    ///　long ポジションの平均購入単価
-    fn get_long_pos_avrage_price(&self) -> (f64, f64) {
-        return self.positions.get_long_position();
-    }
-
-    #[getter]
+    #[test]
     /// shortポジションのサイズ（合計）
-    fn get_short_pos_size(&self) -> (f64, f64) {
-        return self.positions.get_short_position();
-    }
+    fn get_short_pos_price_size() {
+        let mut session = make_session();
 
-    #[getter]
-    /// Shortポジションの平均購入単価
-    fn get_short_pos_avarage_price(&self) -> (f64, f64) {
-        return self.positions.get_short_position();
-    }
-*/
+        let order = make_short_order(1, 99.0, 9.9);
+        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder);
 
+        session
+            .positions
+            .short_position
+            .open_position(&mut order_result);
+
+        assert_eq!(session.get_short_pos_size(), 9.9);
+        assert_eq!(session.get_short_pos_avarage_price(), 99.0);
+    }
 }

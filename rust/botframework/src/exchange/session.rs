@@ -39,7 +39,7 @@ impl Position {
     /// ポジションをオープンする。
     /// すでに約定は住んでいるはずなので、エラーは出ない。
     /// 新規にポジションの平均取得単価を計算する。
-    fn open_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
+    pub fn open_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
         order.status = OrderStatus::OpenPosition;
 
         if self.size == 0.0 {
@@ -60,7 +60,7 @@ impl Position {
     /// 閉じるポジションがない場合：　          なにもしない
     /// オーダーがポジションを越える場合：      エラーを返す（呼び出し側でオーダーを分割し、ポジションのクローズとオープンを行う）
     /// オーダーよりポジションのほうが大きい場合：オーダ分のポジションを解消する。
-    fn close_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
+    pub fn close_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
         if self.size == 0.0 {
             // ポジションがない場合なにもしない。
             self.price = 0.0; // （誤差蓄積解消のためポジション０のときはリセット）
@@ -97,8 +97,8 @@ impl Position {
 
 #[derive(Debug, Clone)]
 pub struct Positions {
-    long_position: Position,
-    short_position: Position,
+    pub long_position: Position,
+    pub short_position: Position,
 }
 
 impl Positions {
@@ -109,12 +109,20 @@ impl Positions {
         };
     }
 
-    pub fn get_long_position(&self) -> (f64, f64) {
-        return (self.long_position.price, self.long_position.size);
+    pub fn get_long_position_price(&self) -> f64 {
+        return self.long_position.price;
     }
 
-    pub fn get_short_position(&self) -> (f64, f64) {
-        return (self.short_position.price, self.short_position.size);
+    pub fn get_long_position_size(&self) -> f64 {
+        return self.long_position.size;
+    }
+
+    pub fn get_short_position_price(&self) -> f64 {
+        return self.short_position.price;
+    }
+
+    pub fn get_short_position_size(&self) -> f64 {
+        return self.short_position.size;
     }
 
     fn long_volume(&self) -> f64 {
