@@ -111,9 +111,9 @@ struct MainSession {
 }
 
 impl MainSession {
-    fn from(bb: &mut DummyBb) -> Self {
+    fn from(df: DataFrame) -> Self {
         return MainSession {
-            df: bb.market.market._df(),
+            df: df,
             session: SessionValue::new(),
         };
     }
@@ -129,9 +129,10 @@ impl Session for MainSession {
         side: OrderType,
         price: f64,
         size: f64,
+        message: String, 
         duration_ms: i64,
     ) -> Result<(), OrderStatus> {
-        return self.session.make_order(side, price, size, duration_ms);
+        return self.session.make_order(side, price, size, message, duration_ms);
     }
 }
 
@@ -313,7 +314,7 @@ impl DummyBb {
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
 
-    fn run(&mut self, agent: &PyAny, name: String, interval_sec: i64) -> PyResult<()> {
+    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         let methods_list = agent.dir();
 
         let mut want_tick = false;
@@ -367,8 +368,7 @@ impl DummyBb {
         let ohlcv_df = ohlcv_df_from_raw(&df, 0, interval_sec, 0);
 
         Python::with_gil(|py| {
-            let mut py_session = MainSession::from(self);
-            &py_session.session.set_agent_name(name);
+            let mut py_session = MainSession::from(self.market._df());
 
             let skip_until = self.get_sim_start_ms();
 
@@ -419,6 +419,7 @@ impl DummyBb {
                                 order.side,
                                 order.price,
                                 order.size,
+                                order.message.clone(),
                                 order.duration_ms,
                             );
                             println!("Make ORDER {:?}", order);
@@ -702,6 +703,8 @@ pub struct PyOrderResult {
     pub fee: f64,
     #[pyo3(get, set)]
     pub total_profit: f64,
+    #[pyo3(get, set)]
+    pub message: String    
 }
 
 impl PyOrderResult {
@@ -721,6 +724,7 @@ impl PyOrderResult {
             profit: result.profit,
             fee: result.fee,
             total_profit: result.total_profit,
+            message: result.message.clone()
         };
     }
 }
@@ -731,6 +735,7 @@ struct PyOrder {
     side: OrderType,
     price: f64,
     size: f64,
+    message: String,
     duration_ms: i64,
 }
 
@@ -738,22 +743,24 @@ struct PyOrder {
 
 impl PyOrder {
     #[new]
-    fn new(side: String, price: f64, size: f64, valid_sec: i64) -> Self {
+    fn new(side: String, price: f64, size: f64, message: String, valid_sec: i64) -> Self {
         return PyOrder {
             side: OrderType::from_str(side.as_str()),
             price: price,
             size: size,
+            message: message,
             duration_ms: valid_sec * 1_000,
         };
     }
 
     fn __str__(&self) -> PyResult<String> {
         return Ok(format!(
-            "side: {}, price: {}, size: {}, duration_ms: {}",
+            "side: {}, price: {}, size: {}, duration_ms: {}, {}",
             self.side.to_long_string(),
             self.price,
             self.size,
-            self.duration_ms
+            self.duration_ms,
+            self.message,
         ));
     }
 }
@@ -961,62 +968,102 @@ fn test_python_method_search() {
     });
 }
 
-/*
-use arrow::{array::ArrayRef, ffi};
-use polars::prelude::*;
-use polars_arrow::export::arrow;
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
-use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 
 
-pub(crate) fn to_py_array(py: Python, pyarrow: &PyModule, array: ArrayRef) -> PyResult<PyObject> {
-    let array_ptr = Box::new(ffi::ArrowArray::empty());
-    let schema_ptr = Box::new(ffi::ArrowSchema::empty());
+#[cfg(test)]
+mod CopySessionTest {
+    use crate::MainSession;
+    use crate::{exchange::session::SessionValue, CopySession};
+    use crate::exchange::{Market, MarketInfo};
 
-    let array_ptr = Box::into_raw(array_ptr);
-    let schema_ptr = Box::into_raw(schema_ptr);
+    fn prepare() {
 
-    unsafe {
-        ffi::export_field_to_c(
-            &ArrowField::new("", array.data_type().clone(), true),
-            schema_ptr,
-        );
-        ffi::export_array_to_c(array, array_ptr);
-    };
-
-    let array = pyarrow.getattr("Array")?.call_method1(
-        "_import_from_c",
-        (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
-    )?;
-
-    unsafe {
-        Box::from_raw(array_ptr);
-        Box::from_raw(schema_ptr);
-    };
-
-    Ok(array.to_object(py))
-}
-
-pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
-    // ensure we have a single chunk
-    let series = series.rechunk();
-    let array = series.to_arrow(0);
-
-    // acquire the gil
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    // import pyarrow
-    let pyarrow = py.import("pyarrow")?;
-
-    // pyarrow array
-    let pyarrow_array = to_py_array(py, pyarrow, array)?;
-
-    // import polars
-    let polars = py.import("polars")?;
-    let out = polars.call_method1("from_arrow", (pyarrow_array,))?;
-    Ok(out.to_object(py))
-}
+    }
 
 
+    #[test]
+    fn test_get_current_time() {
+        // let mut session = SessionValue::new();
+        let mut market = Market::new();
+        let main_session = MainSession::from(market._df());
+        let copy_session = 
+            CopySession::from(&main_session, &market._df(), 1);
+
+        copy_session.get_current_time();        
+        
+    }
+
+    /*
+    ///　現在のセッション時間をmsで取得する。
+    fn get_current_time(&self) -> i64 {
+        return self.current_time_ms;
+    }
+
+    #[getter]
+    ///　 直近の約定から想定される売り板の最安値（Best Ask価格）を取得する。
+    fn get_sell_edge_price(&self) -> f64 {
+        return self.sell_board_edge_price;
+    }
+
+    #[getter]
+    ///　 直近の約定から想定される買い板の最高値（Best Bit価格）を取得する。    
+    fn get_buy_edge_price(&self) -> f64 {
+        return self.buy_board_edge_price;
+    }
+
+    #[getter]
+    /// 未約定でキューに入っているlong orderのサイズ（合計）
+    fn get_long_order_size(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    ///　未約定のlong order一覧
+    fn get_long_orders(&self) -> Vec<Order> {
+        return self.long_orders.get_q();
+    }
+
+    #[getter]
+    /// 未約定でキューに入っているshort orderのサイズ（合計）
+    fn get_short_order_size(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    ///　未約定のshort order一覧    
+    fn get_short_orders(&self) -> Vec<Order> {
+        return self.short_orders.get_q();
+    }
+
+    #[getter]
+    /// long/short合計のポジション損益（手数料込み）
+    fn get_pos_balance(&self) -> f64 {
+        return 0.0;
+    }
+
+    #[getter]
+    /// longポジションのサイズ（合計）
+    fn get_long_pos_size(&self) -> (f64, f64) {
+        return self.positions.get_long_position();
+    }
+
+    #[getter]
+    ///　long ポジションの平均購入単価
+    fn get_long_pos_avrage_price(&self) -> (f64, f64) {
+        return self.positions.get_long_position();
+    }
+
+    #[getter]
+    /// shortポジションのサイズ（合計）
+    fn get_short_pos_size(&self) -> (f64, f64) {
+        return self.positions.get_short_position();
+    }
+
+    #[getter]
+    /// Shortポジションの平均購入単価
+    fn get_short_pos_avarage_price(&self) -> (f64, f64) {
+        return self.positions.get_short_position();
+    }
 */
+
+}

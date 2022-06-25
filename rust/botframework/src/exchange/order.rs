@@ -100,6 +100,7 @@ pub struct OrderResult {
     pub profit: f64,
     pub fee: f64,
     pub total_profit: f64,
+    pub message: String
 }
 
 impl OrderResult {
@@ -119,6 +120,7 @@ impl OrderResult {
             profit: 0.0,
             fee: 0.0,
             total_profit: 0.0,
+            message: order.message.clone()
         };
     }
 
@@ -174,6 +176,8 @@ pub struct Order {
     #[pyo3(get, set)]
     pub size: f64,        // in USD
     #[pyo3(get, set)]
+    pub message: String,
+    #[pyo3(get, set)]    
     pub remain_size: f64, // ログから想定した未約定数。０になったら全部約定。本来は分割で約定するが、０となの全部約定時のみ発生。
 }
 
@@ -186,6 +190,7 @@ impl Order {
         valid_until: i64, // in ms
         price: f64,
         size: f64, // in USD
+        message: String, 
         taker: bool,
     ) -> Self {
         return Order {
@@ -197,6 +202,7 @@ impl Order {
             valid_until: valid_until,
             price: price,
             size: size,
+            message: message,
             remain_size: size,
         };
     }
@@ -443,6 +449,7 @@ mod ClosedOrderTest {
             100,
             100.1,
             101.0,
+            "".to_string(),
             false,
         );
 
@@ -471,6 +478,7 @@ fn make_orders(buy_order: bool) -> Orders {
         100,
         100.0,
         100.0,
+        "".to_string(),        
         false,
     );
     let o2 = Order::new(
@@ -481,6 +489,7 @@ fn make_orders(buy_order: bool) -> Orders {
         200,
         100.0,
         50.0,
+        "".to_string(),        
         false,
     );
     let o3 = Order::new(
@@ -491,6 +500,7 @@ fn make_orders(buy_order: bool) -> Orders {
         300,
         200.0,
         200.0,
+        "".to_string(),        
         false,
     );
     let o4 = Order::new(
@@ -501,6 +511,7 @@ fn make_orders(buy_order: bool) -> Orders {
         400,
         200.0,
         50.0,
+        "".to_string(),        
         false,
     );
 

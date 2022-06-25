@@ -133,6 +133,9 @@ pub fn ohlcv_df_from_ohlc(
     return ohlcv_from_ohlcv(df, start_time_ms, end_time_ms, width_sec);
 }
 
+
+/// OHLCVからOLHCVを作る。
+/// TODO: 元データのOHLCV最後（最新）データには将来データが含まれているので削除する。
 pub fn ohlcv_from_df(
     df: &DataFrame,
     start_time_ms: i64,
@@ -141,6 +144,7 @@ pub fn ohlcv_from_df(
     descending: bool
 ) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
+
     let t = df.column("time").unwrap();
 
     let vec_t: Vec<NaiveDateTime> = t
