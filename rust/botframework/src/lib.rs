@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use exchange::ohlcv_df_from_ohlc;
-use exchange::MarketInfo;
 use exchange::round_down_tick;
+use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_DebugFlag;
 use pyo3::ffi::Py_SetRecursionLimit;
@@ -303,6 +303,28 @@ impl CopySession {
     }
 }
 
+impl DummyBb {
+    fn on_update(&mut self, py: Python, agent: &PyAny, results: &Vec<OrderResult>) -> PyResult<()> {
+        for r in results {
+            self.order_history.push(r.clone());
+            let result = PyOrderResult::from(r);
+
+            let py_result = Py::new(py, result)?;
+            let obj = py_result.to_object(py);
+
+            let args = PyTuple::new(py, [&obj]);
+            agent.call_method1("on_event", args)?;
+        }
+
+        Ok(())
+    }
+
+
+
+    
+}
+
+
 #[pymethods]
 impl DummyBb {
     #[new]
@@ -343,7 +365,7 @@ impl DummyBb {
             println!("on_tick() OR on_update() must be implementd")
         }
 
-        // warm up run: １０分
+        // warm up run: １分
         // データ保持期間　カットしない？
 
         let mut start_time_ms = self.market.start_time();
@@ -391,12 +413,11 @@ impl DummyBb {
                 let warm_up_ok_flag = if skip_until < time { true } else { false };
 
                 // すべてのイベントを呼び出し
-                // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
                 if want_event {
                     let bs = OrderType::from_str(bs).to_long_string();
 
                     let args = (time, bs, price, size);
-                    agent.call_method1("on_event", args)?;
+                    agent.call_method1("on_tick", args)?;
                 }
 
                 // TODO: May skip wam up time
@@ -415,7 +436,7 @@ impl DummyBb {
                     let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
                     let py_session2 = Py::new(py, copy_session)?;
 
-                    let result = agent.call_method1("on_tick", (clock_time, py_session2))?;
+                    let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
 
                     match result.extract::<PyOrder>() {
                         Ok(order) => {
@@ -441,6 +462,7 @@ impl DummyBb {
                     }
                 }
 
+                // ログの処理
                 let results =
                     py_session
                         .session
@@ -456,13 +478,14 @@ impl DummyBb {
                         let obj = py_result.to_object(py);
 
                         let args = PyTuple::new(py, [&obj]);
-                        agent.call_method1("on_update", args)?;
+                        agent.call_method1("on_event", args)?;
                     }
                 }
             }
             Ok(())
         })
     }
+
 
     //--------------------------------------------------------------------------------------------
     // Market History API
@@ -554,6 +577,11 @@ impl DummyBb {
         self._debug_loop_count = count + 1;
     }
 }
+
+
+
+
+
 
 #[pyfunction]
 fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
