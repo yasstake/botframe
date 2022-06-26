@@ -25,6 +25,8 @@ impl Bb {
     }
 
     pub async fn download_exec_log(&mut self, yyyy: i32, mm: i32, dd: i32) {
+        self.reset_df();
+
         fn insert_callback(m: &mut Market, t: &Trade) {
             m.append_trade(t);
         }
@@ -68,6 +70,10 @@ impl MarketInfo for Bb {
 
     fn for_each(&mut self, call_back: fn(time: i64, kind: &str, price: f64, size: f64), start_time_ms: i64, end_time_ms: i64){
         self.market.for_each(call_back, start_time_ms, end_time_ms);
+    }
+
+    fn reset_df(&mut self) {
+        self.market.reset_df();
     }
 }
 

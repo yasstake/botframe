@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use exchange::ohlcv_df_from_ohlc;
 use exchange::MarketInfo;
+use exchange::round_down_tick;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_DebugFlag;
 use pyo3::ffi::Py_SetRecursionLimit;
@@ -157,7 +158,7 @@ struct CopySession {
 }
 
 impl CopySession {
-    fn from(s: &MainSession, ohlcv_df: &DataFrame, ohlcv_window: i64) -> Self {
+    fn from(s: &MainSession, ohlcv_df: &DataFrame, ohlcv_window_sec: i64) -> Self {
         return CopySession {
             df: s.df.clone(),
             df_ohlcv: ohlcv_df.clone(),
@@ -168,7 +169,7 @@ impl CopySession {
             short_orders: s.session.short_orders.clone(),
             positions: s.session.positions.clone(),
             wallet_balance: s.session.wallet_balance,
-            _ohlcv_window: ohlcv_window,
+            _ohlcv_window: ohlcv_window_sec * 1_000,
         };
     }
 }
@@ -256,23 +257,22 @@ impl CopySession {
     /// またバーの幅が小さく、バーの数も少ない場合はバーが生成できるエラになる。
     /// TODO: きちんとしたエラーコードを返す。
     fn ohlcv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
-        if width_sec < self._ohlcv_window {
+        if width_sec * 1_000 < self._ohlcv_window {
             println!("ohlcv width is shorter than tick, consider use ohlcv_raw() instead");
         }
 
-        let mut current_time_ms = self.get_current_time();
+        let current_time_ms = self.get_current_time();
         // OHLCVの最新のwindowには将来値がふくまれるのカットする。
-        let clock_time = (current_time_ms % &self._ohlcv_window) * &self._ohlcv_window;
-        current_time_ms = clock_time;
+        let current_time_ms = round_down_tick(current_time_ms, self._ohlcv_window);
 
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
 
-        let df = &self.df_ohlcv;
-        let df = ohlcv_df_from_ohlc(df, current_time_ms, width_sec, count);
+        // println!("OHLC currenttime{:?}/{:?}  widh={:?} count={:?}", current_time_ms, PrintTime(current_time_ms), width_sec, count);
+        let df = ohlcv_df_from_ohlc(&self.df_ohlcv, current_time_ms, width_sec, count);
 
         let array: ndarray::Array2<f64> = df
-            .select(&["time", "open", "high", "low", "close", "vol"])
+            .select(&["timestamp", "open", "high", "low", "close", "vol"])
             .unwrap()
             .to_ndarray::<Float64Type>()
             .unwrap();
@@ -292,7 +292,7 @@ impl CopySession {
         let df = ohlcv_df_from_raw(df, current_time_ms, width_sec, count);
 
         let array: ndarray::Array2<f64> = df
-            .select(&["time", "open", "high", "low", "close", "vol"])
+            .select(&["timestamp", "open", "high", "low", "close", "vol"])
             .unwrap()
             .to_ndarray::<Float64Type>()
             .unwrap();
@@ -359,7 +359,7 @@ impl DummyBb {
 
         let df = self.market.market.select_df(start_time_ms, end_time_ms);
 
-        let time_s = &df["time"];
+        let time_s = &df["timestamp"];
         let price_s = &df["price"];
         let size_s = &df["size"];
         let bs_s = &df["bs"];
@@ -480,10 +480,10 @@ impl DummyBb {
     fn ohlcv(&mut self, start_time_ms: i64, end_time_ms: i64, width_sec: i64) -> Py<PyArray2<f64>> {
         let df = &self.market._df();
 
-        let df = ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec, false);
+        let df = ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
 
         let array: ndarray::Array2<f64> = df
-            .select(&["time", "open", "high", "low", "close", "vol"])
+            .select(&["timestamp", "open", "high", "low", "close", "vol"])
             .unwrap()
             .to_ndarray::<Float64Type>()
             .unwrap();
@@ -595,7 +595,7 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
 
         let df = bb.market.market.select_df(start_time_ms, end_time_ms);
 
-        let time_s = &df["time"];
+        let time_s = &df["timestamp"];
         let price_s = &df["price"];
         let size_s = &df["size"];
         let bs_s = &df["bs"];

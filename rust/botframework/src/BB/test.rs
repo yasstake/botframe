@@ -68,7 +68,7 @@ mod test_1 {
 
         let df = m._df();
 
-        let t = df.column("time").unwrap();
+        let t = df.column("timestamp").unwrap();
 
         let mut new_t: Series = t
             .datetime()
@@ -90,7 +90,7 @@ mod test_1 {
         let g = dfl
             .groupby([col("time_slot")])
             .agg([
-                col("time").first(),
+                col("timestamp").first(),
                 col("price").first().alias("open"),
                 col("price").max().alias("high"),
                 col("price").min().alias("low"),
@@ -102,7 +102,7 @@ mod test_1 {
                 }
                 */
             ])
-            .sort("time", Default::default())
+            .sort("timestamp", Default::default())
             .collect()
             .unwrap();
 

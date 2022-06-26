@@ -66,7 +66,7 @@ impl TradeBlock {
             .map(|x| NaiveDateTime::from_timestamp(*x / 1_000_000, (*x % 1_000_000) as u32))
             .collect();
 
-        let time = Series::new("time", av);
+        let time = Series::new("timestamp", av);
         let price = Series::new("price", &self.price);
         let size = Series::new("size", &self.size);
         let bs = Series::new("bs", &self.bs);
@@ -81,12 +81,18 @@ impl TradeBlock {
 use numpy::ndarray;
 
 pub fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
-    let mask = df.column("time").unwrap().gt_eq(start_time_ms).unwrap()
-        & df.column("time").unwrap().lt(end_time_ms).unwrap();
+    // println!("Select from{:?} {:?} / to {:?} {:?}", start_time_ms, PrintTime(start_time_ms), end_time_ms, PrintTime(end_time_ms));
+
+    let mask = df.column("timestamp").unwrap().gt(start_time_ms).unwrap()
+        & df.column("timestamp").unwrap().lt_eq(end_time_ms).unwrap();
 
     let df = df.filter(&mask).unwrap();
 
     return df;
+}
+
+pub fn round_down_tick(current_time_ms: i64, tick_width: i64) -> i64{
+    return (current_time_ms / tick_width) * tick_width;
 }
 
 pub fn ohlcv_df_from_raw(
@@ -96,7 +102,7 @@ pub fn ohlcv_df_from_raw(
     count: i64,
 ) -> DataFrame {
     if current_time_ms <= 0 {
-        current_time_ms = df.column("time").unwrap().max().unwrap();
+        current_time_ms = df.column("timestamp").unwrap().max().unwrap();
     }
 
     let width_ms = width_sec * 1_000;
@@ -104,12 +110,14 @@ pub fn ohlcv_df_from_raw(
     let start_time_ms = if count != 0 {
         ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64))
     } else {
-        df.column("time").unwrap().min().unwrap()
+        df.column("timestamp").unwrap().min().unwrap()
     };
     let end_time_ms = current_time_ms;
 
-    return ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec, true);
+    return ohlcv_from_df(&df, start_time_ms, end_time_ms, width_sec);
 }
+
+use crate::pyutil::PrintTime;
 
 pub fn ohlcv_df_from_ohlc(
     df: &DataFrame,
@@ -118,19 +126,24 @@ pub fn ohlcv_df_from_ohlc(
     count: i64,
 ) -> DataFrame {
     if current_time_ms <= 0 {
-        current_time_ms = df.column("time").unwrap().max().unwrap();
+        current_time_ms = df.column("timestamp").unwrap().max().unwrap();
     }
 
     let width_ms = width_sec * 1_000;
 
-    let start_time_ms = if count != 0 {
-        ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64))
-    } else {
-        df.column("time").unwrap().min().unwrap()
-    };
+    // println!("count{} width_sec{} width_ms{}", count, width_sec, width_ms);
+
     let end_time_ms = current_time_ms;
 
-    return ohlcv_from_ohlcv(df, start_time_ms, end_time_ms, width_sec);
+    let mut start_time_ms = 0; 
+    if count != 0 {
+        start_time_ms = round_down_tick(current_time_ms, width_ms) - width_ms * count;
+        // println!("starttime {}, {}, {}, count {}", start_time_ms, PrintTime(start_time_ms), end_time_ms - start_time_ms, count);
+    } 
+
+    // println!("S/E {} {} {}", PrintTime(start_time_ms), PrintTime(end_time_ms), current_time_ms - end_time_ms);
+
+    return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
 }
 
 
@@ -141,11 +154,10 @@ pub fn ohlcv_from_df(
     start_time_ms: i64,
     end_time_ms: i64,
     width_sec: i64,
-    descending: bool
 ) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
 
-    let t = df.column("time").unwrap();
+    let t = df.column("timestamp").unwrap();
 
     let vec_t: Vec<NaiveDateTime> = t
         .datetime()
@@ -156,12 +168,12 @@ pub fn ohlcv_from_df(
 
     let new_t: Series = Series::new("time_slot", vec_t);
 
-    df.replace("time", new_t);
+    df.replace("timestamp", new_t);
 
     let df = df.lazy();
 
     let df = df
-        .groupby([col("time")])
+        .groupby([col("timestamp")])
         .agg([
             col("price").first().alias("open"),
             col("price").max().alias("high"),
@@ -170,9 +182,9 @@ pub fn ohlcv_from_df(
             col("size").sum().alias("vol"),
         ])
         .sort(
-            "time",
+            "timestamp",
             SortOptions {
-                descending: descending,
+                descending: false,
                 nulls_last: false,
             },
         )
@@ -189,7 +201,8 @@ fn ohlcv_from_ohlcv(
     width_sec: i64,
 ) -> DataFrame {
     let mut df = select_df(df, start_time_ms, end_time_ms);
-    let t = df.column("time").unwrap();
+
+    let t = df.column("timestamp").unwrap();
 
     let vec_t: Vec<NaiveDateTime> = t
         .datetime()
@@ -200,12 +213,12 @@ fn ohlcv_from_ohlcv(
 
     let new_t: Series = Series::new("time_slot", vec_t);
 
-    df.replace("time", new_t);
+    df.replace("timestamp", new_t);
 
     let df = df.lazy();
 
     let df = df
-        .groupby([col("time")])
+        .groupby([col("timestamp")])
         .agg([
             col("open").first().alias("open"),
             col("high").max().alias("high"),
@@ -214,9 +227,9 @@ fn ohlcv_from_ohlcv(
             col("vol").sum().alias("vol"),
         ])
         .sort(
-            "time",
+            "timestamp",
             SortOptions {
-                descending: true,
+                descending: false,
                 nulls_last: false,
             },
         )
@@ -241,6 +254,7 @@ pub trait MarketInfo {
         start_time_ms: i64,
         end_time_ms: i64,
     );
+    fn reset_df(&mut self) ;
 }
 
 pub struct Market {
@@ -339,6 +353,10 @@ impl MarketInfo for Market {
         return self.trade_history.clone();
     }
 
+    fn reset_df(&mut self) {
+        self.trade_history = TradeBlock::new().to_data_frame();
+    }
+
     // プライベート用
     fn _ohlcv(&mut self, current_time_ms: i64, width_sec: i64, count: i64) -> ndarray::Array2<f64> {
         let df = &self.trade_history;
@@ -346,7 +364,7 @@ impl MarketInfo for Market {
         let df = ohlcv_df_from_raw(df, current_time_ms, width_sec, count);
 
         let array: ndarray::Array2<f64> = df
-            .select(&["time", "open", "high", "low", "close", "vol"])
+            .select(&["timestamp", "open", "high", "low", "close", "vol"])
             .unwrap()
             .to_ndarray::<Float64Type>()
             .unwrap();
@@ -356,13 +374,13 @@ impl MarketInfo for Market {
 
     // TODO: error handling calling before data load
     fn start_time(&self) -> i64 {
-        let time_s = self.trade_history.column("time").unwrap();
+        let time_s = self.trade_history.column("timestamp").unwrap();
         return time_s.min().unwrap();
     }
 
     // TODO: error handling calling before data load
     fn end_time(&self) -> i64 {
-        let time_s = self.trade_history.column("time").unwrap();
+        let time_s = self.trade_history.column("timestamp").unwrap();
         return time_s.max().unwrap();
     }
 
@@ -374,7 +392,7 @@ impl MarketInfo for Market {
     ) {
         let df = self.select_df(start_time_ms, end_time_ms);
 
-        let time_s = &df["time"];
+        let time_s = &df["timestamp"];
         let price_s = &df["price"];
         let size_s = &df["size"];
         let bs_s = &df["bs"];
@@ -489,6 +507,13 @@ fn test_make_history() {
     assert_eq!(market.end_time(), 2_999_999 * 1_000); // time is in msec
 }
 
+
+#[test]
+fn test_round_down_tick() {
+    assert_eq!(round_down_tick(10010, 10), 10010);
+    assert_eq!(round_down_tick(10010, 100), 10000);    
+}
+
 #[test]
 fn test_df_select() {
     let mut market = Market::new();
@@ -512,11 +537,13 @@ fn test_df_select() {
     let df = market.select_df(1, 999);
     assert_eq!(df.height(), 0);
 
+    // 開始時刻は次のTickに含まれる。
     let df = market.select_df(0, 999);
-    assert_eq!(df.height(), 1);
-
-    let df = market.select_df(1, 1_000);
     assert_eq!(df.height(), 0);
+
+    // 終了時刻は現在のTickに含まれる。
+    let df = market.select_df(1, 1_000);
+    assert_eq!(df.height(), 1);
 
     let df = market.select_df(0, 1_000);
     assert_eq!(df.height(), 1);
@@ -557,8 +584,25 @@ fn test_make_olhc() {
     println!("{}", df.head(Some(12)));
     println!("5TOTAL={}", df.sum());
 
+
+
     let array = m._ohlcv(last_time, 5, 1000);
     println!("{}", array);
+
+    let df_select = select_df(&df, 1651450520000, 1651450535000);
+    println!("{:?}", df_select);
+
+    let ohlcv_df = ohlcv_df_from_ohlc(&df, last_time, 10, 3);
+    println!("{}", ohlcv_df.head(Some(12)));
+    println!("OHLC 5={}", df.sum());
+
+    /*
+    let ohlcv_df = ohlcv_df_from_ohlc(&df, last_time, 5, 3);
+    println!("{}", df.head(Some(12)));
+    println!("OHCL from OHCL={}", df.sum());
+*/
+
+
 }
 
 #[test]
@@ -577,6 +621,9 @@ fn test_make_ohlcv_from_ohlcv() {
     println!("{}", df.head(Some(12)));
 
     let df2 = ohlcv_from_ohlcv(&df, start_time, last_time, 120);
+    println!("{:?}", df2.head(Some(12)));
+
+    let df2 = ohlcv_from_ohlcv(&df, last_time - 5 * 60 *1_000, last_time, 120);
     println!("{:?}", df2.head(Some(12)));
 
     /*
@@ -668,7 +715,7 @@ fn test_df_loop() {
     let df = market.select_df(start_time_ms, end_time_ms);
     let l = df.height();
 
-    let time_s = &df["time"];
+    let time_s = &df["timestamp"];
     let price_s = &df["price"];
     let size_s = &df["size"];
     let bs_s = &df["bs"];
