@@ -25,8 +25,6 @@ impl Bb {
     }
 
     pub async fn download_exec_log(&mut self, yyyy: i32, mm: i32, dd: i32) {
-        self.reset_df();
-
         fn insert_callback(m: &mut Market, t: &Trade) {
             m.append_trade(t);
         }
@@ -38,6 +36,8 @@ impl Bb {
     // 数個のログを確認したところ、概ねUTCで２：３０ごろに前日分のログができている。
     // 年のため生成までに４時間とみたてて計算する。
     pub async fn download_exec_log_ndays(&mut self, ndays: i32) {
+        self.reset_df();
+
         let last_day = Utc::now() - Duration::days(1) - Duration::hours(4); // 4H to delivery log.
 
         for i in (0..ndays).rev() {
