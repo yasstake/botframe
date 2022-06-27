@@ -70,32 +70,37 @@ class Agent:
         self.K = 1.6                            # パラメターKを設定する。
         self.detect_long = False
         self.detect_short = False
-        self.doten_long = 0
-        self.doten_short = 0
+        self.doten_long = False
+        self.doten_short = False
 
     def on_tick(self, time_ms, action, price, size):
         if self.detect_long:
-            order = None
+            order_size = 10
+            message = "OpenLong"
             self.detect_long = False
             if self.doten_long:
-                order = rbot.Order("Buy", price, self.doten_long, 600, "Doten Long")
+                order_size = 20
+                message = "DotenLong"
                 self.doten_long = 0
-            else:
-                order =rbot.Order("Buy", price, 10, 600, "Open Long")
 
-            return order
+            return  rbot.Order("Buy", price, order_size, 600, message)                
+
 
         if self.detect_short:
             self.detect_short = False
             order = None
 
+            order_size = 10
+            message = "OpneShort"
             if self.doten_short:
-                order = rbot.Order("Sell", price, self.doten_short, 600, "DotenShort")
+                order_size = 20
+                message = "Open short"
+                self.doten_short = False
                 self.doten_short = 0
-            else:
-                order = rbot.Order("Sell", price, 10, 600, "DotenShort")
+            
+            return rbot.Order("Sell", price, order_size, 600, message)
 
-            return order
+
 
     def on_clock(self, time_ms, session):
         ohlcv_array = session.ohlcv(60*60*2, 6)     # 最新足０番目　＋　５本の足を取得。 最新は６番目。
@@ -104,7 +109,7 @@ class Agent:
         if len(ohlcv_df.index) < 6:                 # データが過去６本分そろっていない場合はリターン
             return
 
-        print(rbot.PrintTime(time_ms) + " on_clock")
+        # print(rbot.PrintTime(time_ms) + " on_clock")
 
         ohlcv_df["range"] = ohlcv_df["high"] - ohlcv_df["low"]      # レンジを計算
 
@@ -117,12 +122,12 @@ class Agent:
         self.detect_long = range_width * \
             self.K < ohlcv_latest["open"][0] - ohlcv_latest["low"][0]
         if self.detect_long and session.short_pos_size:
-            self.doten_long = session.short_pos_size * 2
+            self.doten_long = True
 
         self.detect_short = range_width * \
             self.K < ohlcv_latest["high"][0] - ohlcv_latest["open"][0]
         if self.detect_short and session.long_pos_size:
-            self.doten_short = session.long_pos_size * 2
+            self.doten_short = True
 
 
     def on_update(self, result):
@@ -139,4 +144,6 @@ df = result_to_df(bb.transactions)
 
 print(df)
 
-print(df["total_profit"].sum())
+print("total  ", df["total_profit"].sum())
+print("profit ", df["profit"].sum())
+print("fee    ", df["fee"].sum())
