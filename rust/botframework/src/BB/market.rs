@@ -75,6 +75,11 @@ impl MarketInfo for Bb {
     fn reset_df(&mut self) {
         self.market.reset_df();
     }
+
+    fn get_df_height(&self) -> i64 {
+        return self.market.history_size();
+    }
+
 }
 
 

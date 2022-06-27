@@ -255,6 +255,7 @@ pub trait MarketInfo {
         end_time_ms: i64,
     );
     fn reset_df(&mut self) ;
+    fn get_df_height(&self) -> i64;
 }
 
 pub struct Market {
@@ -295,7 +296,7 @@ impl Market {
         }
     }
 
-    pub fn history_size(&mut self) -> i64 {
+    pub fn history_size(&self) -> i64 {
         let rec_no: i64 = self.trade_history.height() as i64;
 
         return rec_no;
@@ -408,6 +409,9 @@ impl MarketInfo for Market {
             call_back(t.unwrap(), b.unwrap(), p.unwrap(), s.unwrap());
             //println!("{:?} {:?} {:?} {:?}", t.unwrap(), p.unwrap(), s.unwrap(), b.unwrap());
         }
+    }
+    fn get_df_height(&self) -> i64 {
+        return self.history_size();
     }
 }
 

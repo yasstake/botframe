@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use exchange::ohlcv_df_from_ohlc;
-use exchange::MarketInfo;
 use exchange::round_down_tick;
+use exchange::MarketInfo;
 use pyo3::ffi::PyTuple_GetSlice;
 use pyo3::ffi::Py_DebugFlag;
 use pyo3::ffi::Py_SetRecursionLimit;
@@ -303,6 +303,85 @@ impl CopySession {
     }
 }
 
+use crate::exchange::order::OrderResult;
+
+impl DummyBb {
+    fn on_event(
+        dummyBb: &mut DummyBb,
+        py: &Python,
+        agent: &mut PyAny,
+        results: &Vec<OrderResult>,
+    ) -> PyResult<()> {
+        //call back event update
+
+        for r in results {
+            dummyBb.order_history.push(r.clone());
+            let result = PyOrderResult::from(r);
+
+            let py_result = Py::new(*py, result)?;
+            let obj = py_result.to_object(*py);
+
+            let args = PyTuple::new(*py, [&obj]);
+            agent.call_method1("on_update", args)?;
+        }
+        Ok(())
+    }
+
+    fn on_clock(
+        py: &Python,
+        agent: &mut PyAny,
+        session: &MainSession,
+        ohlcv_df: &DataFrame,
+        interval_sec: i64,
+        clock_time: i64,
+    ) -> PyResult<()> {
+        // let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
+        let copy_session = CopySession::from(&session, &ohlcv_df, interval_sec);
+        let py_session2 = Py::new(*py, copy_session)?;
+
+        let result = agent.call_method1("on_tick", (clock_time, py_session2))?;
+
+        Ok(())
+    }
+
+    fn make_single_order(&self, session: &mut MainSession, order: &PyOrder) -> PyResult<()> {
+        &session.make_order(
+            order.side,
+            order.price,
+            order.size,
+            order.message.clone(),
+            order.duration_ms,
+        );
+
+        Ok(())
+    }
+
+    fn make_order(&self, session: &mut MainSession, result: &PyAny) -> PyResult<()> {
+        match result.extract::<PyOrder>() {
+            Ok(order) => {
+                self.make_single_order(session, &order)?;
+            }
+            Err(e) => {
+                // マルチオーダーの処理
+                match result.downcast::<PyList>() {
+                    Ok(list) => {
+                        for order in list.iter() {
+                            match result.extract::<PyOrder>() {
+                                Ok(order) => {
+                                    self.make_single_order(session, &order)?;
+                                }
+                                Err(e) => {}
+                            }
+                        }
+                    }
+                    Err(e) => {println!("unknown order type {:?}", result);}
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[pymethods]
 impl DummyBb {
     #[new]
@@ -315,6 +394,15 @@ impl DummyBb {
             order_history: vec![],
         };
     }
+
+    fn __str__(&self) -> String {
+        return format!("DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
+            self.get_log_start_ms().unwrap(), PrintTime(self.get_log_start_ms().unwrap()),
+            self.get_log_end_ms().unwrap(), PrintTime(self.get_log_end_ms().unwrap()),
+            self.get_number_of_records()
+    );
+    }
+
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
 
@@ -553,6 +641,11 @@ impl DummyBb {
         // トリッキーではあるが、カウントダウン側とのバランスをとって＋１
         self._debug_loop_count = count + 1;
     }
+
+    #[getter]
+    fn get_number_of_records(&self) -> i64 {
+        return self.market.get_df_height();
+    }
 }
 
 #[pyfunction]
@@ -661,7 +754,6 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
     })
 }
 
-use crate::exchange::order::OrderResult;
 use crate::exchange::order::OrderStatus;
 
 #[pyclass]
