@@ -112,12 +112,20 @@ struct MainSession {
 }
 
 impl MainSession {
-    fn from(df: DataFrame) -> Self {
+    pub fn from(df: DataFrame) -> Self {
         return MainSession {
             df: df,
             session: SessionValue::new(),
         };
     }
+
+    pub fn copy_child(&self, ohlcv_df: &DataFrame, ohlcv_window_sec: i64) -> CopySession {
+        return CopySession::from(&self, ohlcv_df,ohlcv_window_sec);
+    }
+
+    pub fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult> {
+        return self.session.main_exec_event(current_time_ms, order_type, price, size);
+    }    
 }
 
 impl Session for MainSession {
@@ -130,12 +138,12 @@ impl Session for MainSession {
         side: OrderType,
         price: f64,
         size: f64,
+        duration_ms: i64,        
         message: String,
-        duration_ms: i64,
     ) -> Result<(), OrderStatus> {
         return self
             .session
-            .make_order(side, price, size, message, duration_ms);
+            .make_order(side, price, size, duration_ms, message);
     }
 }
 
@@ -313,7 +321,6 @@ impl DummyBb {
         results: &Vec<OrderResult>,
     ) -> PyResult<()> {
         //call back event update
-
         for r in results {
             dummyBb.order_history.push(r.clone());
             let result = PyOrderResult::from(r);
@@ -349,14 +356,18 @@ impl DummyBb {
             order.side,
             order.price,
             order.size,
+            order.duration_ms,            
             order.message.clone(),
-            order.duration_ms,
         );
 
         Ok(())
     }
 
     fn make_order(&self, session: &mut MainSession, result: &PyAny) -> PyResult<()> {
+        if result.is_none() {
+            return Ok(());
+        }
+
         match result.extract::<PyOrder>() {
             Ok(order) => {
                 self.make_single_order(session, &order)?;
@@ -365,10 +376,10 @@ impl DummyBb {
                 // マルチオーダーの処理
                 match result.downcast::<PyList>() {
                     Ok(list) => {
-                        for order in list.iter() {
+                        for order_item in list.iter() {
                             match result.extract::<PyOrder>() {
-                                Ok(order) => {
-                                    self.make_single_order(session, &order)?;
+                                Ok(order_item) => {
+                                    self.make_single_order(session, &order_item)?;
                                 }
                                 Err(e) => {}
                             }
@@ -395,7 +406,7 @@ impl DummyBb {
         };
     }
 
-    fn __str__(&self) -> String {
+    fn __str__(&mut self) -> String {
         return format!("DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
             self.get_log_start_ms().unwrap(), PrintTime(self.get_log_start_ms().unwrap()),
             self.get_log_end_ms().unwrap(), PrintTime(self.get_log_end_ms().unwrap()),
@@ -421,10 +432,10 @@ impl DummyBb {
             want_update = true;
         }
 
-        let mut want_event = false;
-        if methods_list.contains("on_event").unwrap() {
+        let mut want_tick = false;
+        if methods_list.contains("on_tick").unwrap() {
             println!("call back by all log events");
-            want_event = true;
+            want_tick = true;
         }
 
         if (want_clock == false) && (want_update == false) {
@@ -479,11 +490,13 @@ impl DummyBb {
                 let warm_up_ok_flag = if skip_until < time { true } else { false };
 
                 // すべてのイベントを呼び出し
-                if want_event {
+                if want_tick {
                     let bs = OrderType::from_str(bs).to_long_string();
 
                     let args = (time, bs, price, size);
-                    agent.call_method1("on_tick", args)?;
+                    let result = agent.call_method1("on_tick", args)?;
+
+                    self.make_order(&mut py_session, &result)?;
                 }
 
                 // TODO: May skip wam up time
@@ -504,14 +517,17 @@ impl DummyBb {
 
                     let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
 
+                    self.make_order(&mut py_session, &result)?;
+
+                    /*
                     match result.extract::<PyOrder>() {
                         Ok(order) => {
                             &py_session.make_order(
                                 order.side,
                                 order.price,
                                 order.size,
+                                order.duration_ms,                                
                                 order.message.clone(),
-                                order.duration_ms,
                             );
                             // println!("Make ORDER {:?}", order);
                         }
@@ -526,16 +542,25 @@ impl DummyBb {
                         }
                         Err(e) => {}
                     }
+                    */
                 }
 
-                // ログの処理
+
                 let results =
                     py_session
-                        .session
+                        // .session
                         .main_exec_event(time, OrderType::from_str(bs), price, size);
+
 
                 //call back event update
                 if want_update && results.len() != 0 {
+                    /*
+
+
+                    //let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
+                    let py_session2 = Py::new(py, copy_session2)?;
+                    */
+
                     for r in results {
                         self.order_history.push(r.clone());
                         let result = PyOrderResult::from(r);
@@ -544,9 +569,12 @@ impl DummyBb {
                         let obj = py_result.to_object(py);
 
                         let args = PyTuple::new(py, [&obj]);
-                        agent.call_method1("on_event", args)?;
+                        let result = agent.call_method1("on_update", args)?;
+
+                        // self.make_order(&mut py_session, &result)?;
                     }
                 }
+
             }
             Ok(())
         })
@@ -644,8 +672,8 @@ impl DummyBb {
     }
 
     #[getter]
-    fn get_number_of_records(&self) -> i64 {
-        return self.market.get_df_height();
+    fn get_number_of_records(&mut self) -> i64 {
+        return self.market.market.history_size();
     }
 }
 
@@ -653,15 +681,15 @@ impl DummyBb {
 
 
 
-
+/*
 #[pyfunction]
 fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
     let methods_list = agent.dir();
 
-    let mut want_tick = false;
-    if methods_list.contains("on_tick").unwrap() {
-        println!("call back tick by {}[sec]", interval_sec);
-        want_tick = true;
+    let mut want_clock = false;
+    if methods_list.contains("on_clock").unwrap() {
+        println!("call back on_clock by every {}[sec]", interval_sec);
+        want_clock = true;
     }
 
     let mut want_update = false;
@@ -670,13 +698,13 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         want_update = true;
     }
 
-    let mut want_event = false;
-    if methods_list.contains("on_event").unwrap() {
+    let mut want_tick = false;
+    if methods_list.contains("on_tick").unwrap() {
         println!("call back by all log events");
-        want_event = true;
+        want_tick = true;
     }
 
-    if (want_tick == false) && (want_update == false) {
+    if (want_clock == false) && (want_update == false) {
         println!("on_tick() OR on_update() must be implementd")
     }
 
@@ -719,22 +747,21 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
             let current_time_ms = session.get_timestamp_ms();
             let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
-            if want_tick && (current_time_ms < clock_time) {
+            if want_clock && (current_time_ms < clock_time) {
                 // let market = Py::new(py, bb)?.to_object(py);
 
                 //                let args = PyTuple::new(py, [bb, clock_time]);
 
-                let result = agent.call_method1("on_tick", (market, clock_time))?;
+                let result = agent.call_method1("on_clock", (market, clock_time))?;
                 // call back tick
             }
 
             // すべてのイベントを呼び出し
-            // TODO: もしTrueを返したら、つぎのtickを即時呼び出し
-            if want_event {
+            if want_tick {
                 let bs = OrderType::from_str(bs).to_long_string();
                 //let on_event: &PyAny = agent.get_item("on_event")?.into();
                 let args = (time, bs, price, size);
-                agent.call_method1("on_event", args)?;
+                let result = agent.call_method1("on_tick", args)?;
                 //on_event.call_method1(py, args)?;
 
                 // agent.call_method(name, args, kwargs)
@@ -759,6 +786,7 @@ fn sim_run(market: &PyAny, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         Ok(())
     })
 }
+*/
 
 use crate::exchange::order::OrderStatus;
 
@@ -824,21 +852,21 @@ struct PyOrder {
     side: OrderType,
     price: f64,
     size: f64,
-    message: String,
     duration_ms: i64,
+    message: String,
 }
 
 #[pymethods]
 
 impl PyOrder {
     #[new]
-    fn new(side: String, price: f64, size: f64, message: String, valid_sec: i64) -> Self {
+    fn new(side: String, price: f64, size: f64, valid_sec: i64, message: String) -> Self {
         return PyOrder {
             side: OrderType::from_str(side.as_str()),
             price: price,
             size: size,
-            message: message,
             duration_ms: valid_sec * 1_000,
+            message: message,
         };
     }
 

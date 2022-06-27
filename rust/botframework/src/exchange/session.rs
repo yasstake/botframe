@@ -557,7 +557,7 @@ impl SessionValue {
 
 pub trait Session {
     fn get_timestamp_ms(&mut self) -> i64;
-    fn make_order(&mut self, side: OrderType, price: f64, size: f64, message: String, duration_ms: i64) -> Result<(), OrderStatus>; 
+    fn make_order(&mut self, side: OrderType, price: f64, size: f64, duration_ms: i64, message: String) -> Result<(), OrderStatus>; 
 
     /*
     fn get_active_orders(&self) -> [Order];
@@ -586,8 +586,8 @@ impl Session for SessionValue {
         side: OrderType,
         price: f64,
         size: f64,
+        duration_ms: i64,        
         message: String,
-        duration_ms: i64,
     ) -> Result<(), OrderStatus> {
         // TODO: 発注可能かチェックする
 
@@ -927,7 +927,7 @@ mod TestSessionValue {
     fn test_exec_event_execute_order0() {
         let mut session = SessionValue::new();
 
-        session.make_order(OrderType::Buy, 50.0, 10.0, "".to_string(),  100);
+        session.make_order(OrderType::Buy, 50.0, 10.0, 100,  "".to_string());
         println!("{:?}", session.long_orders);
 
         let r = session.exec_event_execute_order(2, OrderType::Sell, 50.0, 5.0);
@@ -946,7 +946,7 @@ mod TestSessionValue {
         let mut session = SessionValue::new();
 
         // 新規にポジション作る（ロング）
-        session.make_order(OrderType::Buy, 50.0, 10.0, "".to_string(), 100);
+        session.make_order(OrderType::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
 
         let mut result = session.exec_event_execute_order(2, OrderType::Sell, 49.0, 10.0).unwrap();
@@ -958,7 +958,7 @@ mod TestSessionValue {
         println!("{:?}", result);        
 
         // 一部クローズ
-        session.make_order(OrderType::Sell, 30.0, 8.0, "".to_string(), 100);
+        session.make_order(OrderType::Sell, 30.0, 8.0, 100, "".to_string());
         println!("{:?}", session.short_orders);
 
         let mut result = session.exec_event_execute_order(3, OrderType::Buy, 49.0, 10.0).unwrap();
@@ -970,7 +970,7 @@ mod TestSessionValue {
         println!("{:?}", result);        
 
         // クローズ＋オープン
-        session.make_order(OrderType::Sell, 30.0, 3.0, "".to_string(), 100);
+        session.make_order(OrderType::Sell, 30.0, 3.0, 100, "".to_string());
         println!("{:?}", session.short_orders);
 
         let mut result = session.exec_event_execute_order(4, OrderType::Buy, 49.0, 10.0).unwrap();
@@ -1009,7 +1009,7 @@ mod TestSessionValue {
         println!("--make long order--");
 
         // TODO: 書庫金不足を確認する必要がある.
-        session.make_order(OrderType::Buy, 50.0, 10.0, "".to_string(), 100);
+        session.make_order(OrderType::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
 
         // 売りよりも高い金額のオファーにはなにもしない。
@@ -1035,12 +1035,12 @@ mod TestSessionValue {
 
         // 決裁オーダーTODO: 書庫金不足を確認する必要がある.
 
-        session.make_order(OrderType::Sell, 40.0, 12.0, "".to_string(),100);
+        session.make_order(OrderType::Sell, 40.0, 12.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
 
-        session.make_order(OrderType::Sell, 41.0, 10.0, "".to_string(), 100);
+        session.make_order(OrderType::Sell, 41.0, 10.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
@@ -1061,7 +1061,7 @@ mod TestSessionValue {
 
 
         // 決裁オーダーTODO: 書庫金不足を確認する必要がある.
-        session.make_order(OrderType::Buy, 80.0, 10.0, "".to_string(), 100);
+        session.make_order(OrderType::Buy, 80.0, 10.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
