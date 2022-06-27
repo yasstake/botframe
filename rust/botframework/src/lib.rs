@@ -409,10 +409,10 @@ impl DummyBb {
     fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
         let methods_list = agent.dir();
 
-        let mut want_tick = false;
+        let mut want_clock = false;
         if methods_list.contains("on_tick").unwrap() {
             println!("call back tick by {}[sec]", interval_sec);
-            want_tick = true;
+            want_clock = true;
         }
 
         let mut want_update = false;
@@ -427,7 +427,7 @@ impl DummyBb {
             want_event = true;
         }
 
-        if (want_tick == false) && (want_update == false) {
+        if (want_clock == false) && (want_update == false) {
             println!("on_tick() OR on_update() must be implementd")
         }
 
@@ -491,7 +491,7 @@ impl DummyBb {
                 let current_time_ms = py_session.get_timestamp_ms();
                 let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
 
-                if want_tick && (current_time_ms < clock_time) && warm_up_ok_flag {
+                if want_clock && (current_time_ms < clock_time) && warm_up_ok_flag {
                     if self._debug_loop_count != 0 {
                         self._debug_loop_count -= 1;
                         if self._debug_loop_count == 0 {
