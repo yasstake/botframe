@@ -609,6 +609,7 @@ impl DummyBb {
         return py_array2.to_owned();
     }
 
+    /*
     #[getter]
     fn get_transactions(&self) -> PyResult<PyObject> {
         let gil = pyo3::Python::acquire_gil();
@@ -630,6 +631,7 @@ impl DummyBb {
     fn reset_transaction(&mut self) {
         &self.order_history.clear();
     }
+    */
 
     #[getter]
     fn get_log_start_ms(&self) -> PyResult<i64> {

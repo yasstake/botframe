@@ -144,6 +144,8 @@ result = bb.run(agent, 60*60*2)
 
 df = result_to_df(result)
 
+
+
 print(df)
 
 print("total  ", df["total_profit"].sum())
