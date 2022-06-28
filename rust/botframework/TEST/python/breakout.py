@@ -34,8 +34,9 @@ class Agent:
                 if not session.short_pos_size:
                     return rbot.Order("Buy", session.buy_edge_price, 10, 600, "Open Long")    
                 else:
-
                     return rbot.Order("Buy", session.buy_edge_price, 20, 600, "doten Long")    
+            else:
+                pass
 
         if detect_short:
             print("make short")            
@@ -45,6 +46,8 @@ class Agent:
                 else:
                     print("position", session.long_pos_size, session.short_pos_size)                    
                     return rbot.Order("Sell", session.sell_edge_price, 20, 600, "Doten Short") 
+            else:
+                pass
 
 
 bb = rbot.DummyBb()

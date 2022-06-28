@@ -62,6 +62,7 @@ def result_to_df(result_list):
     df["create_time"] = pd.to_datetime((df["create_time"]), utc=True, unit="ms")
     df["sum_profit"] = df["total_profit"].cumsum()
     df["sum_pos"] = df["pos_change"].cumsum()
+    df = df.set_index("create_time", drop=True)
 
     return df
 

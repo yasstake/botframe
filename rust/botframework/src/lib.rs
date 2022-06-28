@@ -360,10 +360,6 @@ impl DummyBb {
     }
 
     fn make_single_order(&self, session: &mut MainSession, order: &PyOrder) -> PyResult<()> {
-        println!(
-            "ORDER: {:?} {} {}",
-            order.side, order.price, order.duration_ms
-        );
         &session.make_order(
             order.side,
             order.price,
@@ -531,9 +527,6 @@ impl DummyBb {
                     let py_session2 = Py::new(py, copy_session)?;
 
                     let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
-                    if result.is_none() == false {
-                        println!("Order! {:?}", result);
-                    }
                     self.make_order(&mut py_session, &result)?;
                 }
 
