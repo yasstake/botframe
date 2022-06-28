@@ -15,8 +15,6 @@ class Agent:
         if len(ohlcv_df.index) < 6:                 # データが過去６本分そろっていない場合はなにもせずリターン
             return 
 
-        print(rbot.PrintTime(time_ms) + " ontick")
-
         ohlcv_df["range"] = ohlcv_df["high"] - ohlcv_df["low"]      # レンジを計算
 
         ohlcv_latest = ohlcv_df[-2:-1]     # 最新足１本
@@ -28,14 +26,25 @@ class Agent:
         detect_short = range_width * self.K < ohlcv_latest["high"][0] - ohlcv_latest["open"][0]
         detect_long  = range_width * self.K < ohlcv_latest["open"][0] - ohlcv_latest["low"][0]
 
-        #　執行方法（まずはシンプルとにかくオーダを出す）
+        #　執行方法（順報告のポジションがあったら保留。逆方向のポジションがのこっていたらドテン）
         if detect_long:
+            print("position", session.long_pos_size, session.short_pos_size)            
             print("make long")
-            return rbot.Order("Buy", session.buy_edge_price, 10, 600, "Open Long")    
+            if not session.long_pos_size:
+                if not session.short_pos_size:
+                    return rbot.Order("Buy", session.buy_edge_price, 10, 600, "Open Long")    
+                else:
+
+                    return rbot.Order("Buy", session.buy_edge_price, 20, 600, "doten Long")    
 
         if detect_short:
             print("make short")            
-            return rbot.Order("Sell", session.sell_edge_price, 10, 600, "Open Short")  
+            if not session.short_pos_size:
+                if not session.long_pos_size:
+                    return rbot.Order("Sell", session.sell_edge_price, 10, 600, "Open Short") 
+                else:
+                    print("position", session.long_pos_size, session.short_pos_size)                    
+                    return rbot.Order("Sell", session.sell_edge_price, 20, 600, "Doten Short") 
 
 
 bb = rbot.DummyBb()
