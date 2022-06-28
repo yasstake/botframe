@@ -434,7 +434,7 @@ impl DummyBb {
         let methods_list = agent.dir();
 
         let mut want_clock = false;
-        if methods_list.contains("on_tick").unwrap() {
+        if methods_list.contains("on_clock").unwrap() {
             println!("call back tick by {}[sec]", interval_sec);
             want_clock = true;
         }
@@ -449,6 +449,12 @@ impl DummyBb {
         if methods_list.contains("on_tick").unwrap() {
             println!("call back by all log events");
             want_tick = true;
+        }
+
+        let mut want_tick_process = false;
+        if methods_list.contains("on_tick_process").unwrap() {
+            println!("on_tick returns something, call on_tick_process");
+            want_tick_process = true;
         }
 
         if (want_clock == false) && (want_update == false) {
@@ -521,7 +527,6 @@ impl DummyBb {
                     let py_session2 = Py::new(py, copy_session)?;
 
                     let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
-
                     self.make_order(&mut py_session, &result)?;
                 }
 
@@ -532,7 +537,21 @@ impl DummyBb {
                     let args = (time, bs, price, size);
                     let result = agent.call_method1("on_tick", args)?;
 
-                    self.make_order(&mut py_session, &result)?;
+                    if result.is_none() == false {
+                        // 継続アクションの呼び出し
+                        if want_tick_process {
+                            let copy_session =
+                                CopySession::from(&py_session, &ohlcv_df, interval_sec);
+                            let py_session2 = Py::new(py, copy_session)?;
+
+                            let result = agent
+                                .call_method1("on_tick_process", (time, &py_session2, result))?;
+
+                            self.make_order(&mut py_session, &result)?;
+                        } else {
+                            self.make_order(&mut py_session, &result)?;
+                        }
+                    }
                 }
 
                 let exec_results = py_session
@@ -551,17 +570,17 @@ impl DummyBb {
 
                         let args = PyTuple::new(py, [&obj]);
                         let result = agent.call_method1("on_update", args)?;
-                        // self.make_order(&mut py_session, &result)?;
+                        // self.make_order(&mut py_session, &result)?;  // cannot borrow twice.
                     }
                 }
             }
             Ok(())
         });
-/*
-        if py_result.is_err() {
-            return PyErr("");
-        }
-*/
+        /*
+                if py_result.is_err() {
+                    return PyErr("");
+                }
+        */
         let gil = pyo3::Python::acquire_gil();
         let py = gil.python();
 

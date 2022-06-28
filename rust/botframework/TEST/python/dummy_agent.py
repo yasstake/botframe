@@ -102,7 +102,10 @@ class Agent:
             
             return rbot.Order("Sell", price, order_size, 600, message)
 
+    def on_tick_process(self, time_ms, session, order):
+        print(time_ms, order)
 
+        return order
 
     def on_clock(self, time_ms, session):
         ohlcv_array = session.ohlcv(60*60*2, 6)     # 最新足０番目　＋　５本の足を取得。 最新は６番目。
