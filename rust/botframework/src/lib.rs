@@ -120,12 +120,20 @@ impl MainSession {
     }
 
     pub fn copy_child(&self, ohlcv_df: &DataFrame, ohlcv_window_sec: i64) -> CopySession {
-        return CopySession::from(&self, ohlcv_df,ohlcv_window_sec);
+        return CopySession::from(&self, ohlcv_df, ohlcv_window_sec);
     }
 
-    pub fn main_exec_event(&mut self, current_time_ms: i64, order_type: OrderType, price: f64, size: f64) -> &Vec<OrderResult> {
-        return self.session.main_exec_event(current_time_ms, order_type, price, size);
-    }    
+    pub fn main_exec_event(
+        &mut self,
+        current_time_ms: i64,
+        order_type: OrderType,
+        price: f64,
+        size: f64,
+    ) -> &Vec<OrderResult> {
+        return self
+            .session
+            .main_exec_event(current_time_ms, order_type, price, size);
+    }
 }
 
 impl Session for MainSession {
@@ -138,7 +146,7 @@ impl Session for MainSession {
         side: OrderType,
         price: f64,
         size: f64,
-        duration_ms: i64,        
+        duration_ms: i64,
         message: String,
     ) -> Result<(), OrderStatus> {
         return self
@@ -356,7 +364,7 @@ impl DummyBb {
             order.side,
             order.price,
             order.size,
-            order.duration_ms,            
+            order.duration_ms,
             order.message.clone(),
         );
 
@@ -385,7 +393,9 @@ impl DummyBb {
                             }
                         }
                     }
-                    Err(e) => {println!("unknown order type {:?}", result);}
+                    Err(e) => {
+                        println!("unknown order type {:?}", result);
+                    }
                 }
             }
         }
@@ -407,17 +417,20 @@ impl DummyBb {
     }
 
     fn __str__(&mut self) -> String {
-        return format!("DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
-            self.get_log_start_ms().unwrap(), PrintTime(self.get_log_start_ms().unwrap()),
-            self.get_log_end_ms().unwrap(), PrintTime(self.get_log_end_ms().unwrap()),
+        return format!(
+            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
+            self.get_log_start_ms().unwrap(),
+            PrintTime(self.get_log_start_ms().unwrap()),
+            self.get_log_end_ms().unwrap(),
+            PrintTime(self.get_log_end_ms().unwrap()),
             self.get_number_of_records()
-    );
+        );
     }
 
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
 
-    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<()> {
+    fn run(&mut self, agent: &PyAny, interval_sec: i64) -> PyResult<PyObject> {
         let methods_list = agent.dir();
 
         let mut want_clock = false;
@@ -470,7 +483,9 @@ impl DummyBb {
 
         let ohlcv_df = ohlcv_df_from_raw(&df, 0, interval_sec, 0);
 
-        Python::with_gil(|py| {
+        let mut order_result: Vec<OrderResult> = vec![];
+
+        let py_result: PyResult<()> = Python::with_gil(|py| {
             let mut py_session = MainSession::from(self.market._df());
 
             let skip_until = self.get_sim_start_ms();
@@ -482,12 +497,33 @@ impl DummyBb {
                 let bs = b.unwrap();
 
                 if self.get_sim_end_ms() < time {
-                    return Ok(());
+                    break;
                 }
 
                 log::debug!("{:?} {:?} {:?} {:?}", time, price, size, bs);
 
                 let warm_up_ok_flag = if skip_until < time { true } else { false };
+
+                // TODO: May skip wam up time
+                // 最初のインターバル毎の時刻で呼び出し。
+                let current_time_ms = py_session.get_timestamp_ms();
+                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+
+                if want_clock && (current_time_ms < clock_time) && warm_up_ok_flag {
+                    if self._debug_loop_count != 0 {
+                        self._debug_loop_count -= 1;
+                        if self._debug_loop_count == 0 {
+                            break;
+                        }
+                    }
+
+                    let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
+                    let py_session2 = Py::new(py, copy_session)?;
+
+                    let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
+
+                    self.make_order(&mut py_session, &result)?;
+                }
 
                 // すべてのイベントを呼び出し
                 if want_tick {
@@ -499,69 +535,14 @@ impl DummyBb {
                     self.make_order(&mut py_session, &result)?;
                 }
 
-                // TODO: May skip wam up time
-                // 最初のインターバル毎の時刻で呼び出し。
-                let current_time_ms = py_session.get_timestamp_ms();
-                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
-
-                if want_clock && (current_time_ms < clock_time) && warm_up_ok_flag {
-                    if self._debug_loop_count != 0 {
-                        self._debug_loop_count -= 1;
-                        if self._debug_loop_count == 0 {
-                            return Ok(());
-                        }
-                    }
-
-                    let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
-                    let py_session2 = Py::new(py, copy_session)?;
-
-                    let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
-
-                    self.make_order(&mut py_session, &result)?;
-
-                    /*
-                    match result.extract::<PyOrder>() {
-                        Ok(order) => {
-                            &py_session.make_order(
-                                order.side,
-                                order.price,
-                                order.size,
-                                order.duration_ms,                                
-                                order.message.clone(),
-                            );
-                            // println!("Make ORDER {:?}", order);
-                        }
-                        Err(e) => {}
-                    }
-
-                    match result.downcast::<PyList>() {
-                        Ok(list) => {
-                            for item in list.iter() {
-                                println!("{:?}", item);
-                            }
-                        }
-                        Err(e) => {}
-                    }
-                    */
-                }
-
-
-                let results =
-                    py_session
-                        // .session
-                        .main_exec_event(time, OrderType::from_str(bs), price, size);
-
+                let exec_results = py_session
+                    // .session
+                    .main_exec_event(time, OrderType::from_str(bs), price, size);
 
                 //call back event update
-                if want_update && results.len() != 0 {
-                    /*
-
-
-                    //let copy_session = CopySession::from(&py_session, &ohlcv_df, interval_sec);
-                    let py_session2 = Py::new(py, copy_session2)?;
-                    */
-
-                    for r in results {
+                if want_update && exec_results.len() != 0 {
+                    for r in exec_results {
+                        order_result.push(r.clone());
                         self.order_history.push(r.clone());
                         let result = PyOrderResult::from(r);
 
@@ -570,16 +551,31 @@ impl DummyBb {
 
                         let args = PyTuple::new(py, [&obj]);
                         let result = agent.call_method1("on_update", args)?;
-
                         // self.make_order(&mut py_session, &result)?;
                     }
                 }
-
             }
             Ok(())
-        })
-    }
+        });
+/*
+        if py_result.is_err() {
+            return PyErr("");
+        }
+*/
+        let gil = pyo3::Python::acquire_gil();
+        let py = gil.python();
 
+        let list = PyList::empty(py);
+
+        for item in order_result {
+            let result = PyOrderResult::from(&item);
+            let py_result = Py::new(py, result)?;
+            let obj = py_result.to_object(py);
+            list.append(obj)?;
+        }
+
+        return Ok(list.to_object(py));
+    }
 
     //--------------------------------------------------------------------------------------------
     // Market History API
@@ -677,10 +673,6 @@ impl DummyBb {
     }
 }
 
-
-
-
-
 use crate::exchange::order::OrderStatus;
 
 #[pyclass]
@@ -714,7 +706,7 @@ pub struct PyOrderResult {
     #[pyo3(get)]
     pub total_profit: f64,
     #[pyo3(get)]
-    pub position_change: f64,    
+    pub position_change: f64,
     #[pyo3(get)]
     pub message: String,
 }
@@ -726,23 +718,20 @@ impl PyOrderResult {
             OrderStatus::OpenPosition => {
                 if result.order_type == OrderType::Buy {
                     position_change = result.size;
-                }
-                else if result.order_type == OrderType::Sell {
-                    position_change = - result.size;
+                } else if result.order_type == OrderType::Sell {
+                    position_change = -result.size;
                 }
             }
             OrderStatus::ClosePosition => {
                 if result.order_type == OrderType::Buy {
-                    position_change = - result.size;
-                }
-                else if result.order_type == OrderType::Sell {
-                    position_change = result.size;                    
+                    position_change = -result.size;
+                } else if result.order_type == OrderType::Sell {
+                    position_change = result.size;
                 }
             }
             _ => {
                 // just ignore (no position change)
             }
-
         }
         return PyOrderResult {
             timestamp: result.timestamp,

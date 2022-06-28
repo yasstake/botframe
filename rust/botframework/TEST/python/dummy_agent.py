@@ -140,9 +140,9 @@ bb = rbot.DummyBb()
 bb.log_load(20)
 
 agent = Agent()
-bb.run(agent, 60*60*2)
+result = bb.run(agent, 60*60*2)
 
-df = result_to_df(bb.transactions)
+df = result_to_df(result)
 
 print(df)
 
