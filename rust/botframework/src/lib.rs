@@ -726,9 +726,9 @@ impl PyOrderResult {
             }
             OrderStatus::ClosePosition => {
                 if result.order_type == OrderType::Buy {
-                    position_change = -result.size;
-                } else if result.order_type == OrderType::Sell {
                     position_change = result.size;
+                } else if result.order_type == OrderType::Sell {
+                    position_change = -result.size;
                 }
             }
             _ => {
