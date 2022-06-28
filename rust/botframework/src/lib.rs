@@ -685,40 +685,65 @@ use crate::exchange::order::OrderStatus;
 
 #[pyclass]
 pub struct PyOrderResult {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub timestamp: i64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub order_id: String,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub order_sub_id: String, // 分割された場合に利用
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub order_type: String,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub post_only: bool,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub create_time: i64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub status: String,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub open_price: f64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub close_price: f64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub size: f64, // in usd
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub volume: f64, //in BTC
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub profit: f64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub fee: f64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pub total_profit: f64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
+    pub position_change: f64,    
+    #[pyo3(get)]
     pub message: String,
 }
 
 impl PyOrderResult {
     fn from(result: &OrderResult) -> Self {
+        let mut position_change = 0.0;
+        match result.status {
+            OrderStatus::OpenPosition => {
+                if result.order_type == OrderType::Buy {
+                    position_change = result.size;
+                }
+                else if result.order_type == OrderType::Sell {
+                    position_change = - result.size;
+                }
+            }
+            OrderStatus::ClosePosition => {
+                if result.order_type == OrderType::Buy {
+                    position_change = - result.size;
+                }
+                else if result.order_type == OrderType::Sell {
+                    position_change = result.size;                    
+                }
+            }
+            _ => {
+                // just ignore (no position change)
+            }
+
+        }
         return PyOrderResult {
             timestamp: result.timestamp,
             order_id: result.order_id.clone(),
@@ -734,6 +759,7 @@ impl PyOrderResult {
             profit: result.profit,
             fee: result.fee,
             total_profit: result.total_profit,
+            position_change: position_change,
             message: result.message.clone(),
         };
     }

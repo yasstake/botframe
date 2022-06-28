@@ -29,6 +29,7 @@ def result_to_df(result_list):
     profit = []
     fee = []
     total_profit = []
+    position_change = []
     message = []
 
     for item in result_list:
@@ -46,6 +47,7 @@ def result_to_df(result_list):
         profit.append(item.profit)
         fee.append(item.fee)
         total_profit.append(item.total_profit)
+        position_change.append(item.position_change)
         message.append(item.message)
 
     df = pd.DataFrame(
@@ -53,10 +55,10 @@ def result_to_df(result_list):
           "order_type": order_type, "post_only": post_only, "create_time": create_time,
           "status":  status, "open_price": open_price, "close_price": close_price,
           "size": size, "volume": volume, "profit": profit, "fee": fee,
-          "total_profit": total_profit, "message": message},
+          "total_profit": total_profit, "pos_change": position_change, "message": message},
     columns=["timestamp", "order_id", "sub_id", "order_type", "post_only",
              "create_time", "status", "open_price", "close_price", "size", "volume",
-             "profit", "fee", "total_profit", "message"]
+             "profit", "fee", "total_profit", "pos_change", "message"]
 )
     df["timestamp"] = pd.to_datetime((df["timestamp"]), utc=True, unit='ms')
     df["create_time"] = pd.to_datetime((df["create_time"]), utc=True, unit='ms')
@@ -135,7 +137,7 @@ class Agent:
 
 
 bb = rbot.DummyBb()
-bb.log_load(90)
+bb.log_load(20)
 
 agent = Agent()
 bb.run(agent, 60*60*2)
