@@ -1,3 +1,5 @@
+// Copyright(c) yasstake 2022. All rights reserved. (no warranty)
+
 /*
 use reqwest::{blocking::Response, header};
 use crate::error::{Error, Result};

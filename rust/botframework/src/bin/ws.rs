@@ -1,3 +1,5 @@
+// Copyright(c) yasstake 2022. All rights reserved. (no warranty)
+
 // Based on https://raw.githubusercontent.com/haxpor/bybit-shiprekt/master/src/main.rs
 
 use anyhow::Result;
