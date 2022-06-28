@@ -10,9 +10,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0"
-pyo3 = { version = "0.16.3", features = ["auto-initialize"] }
+pyo3 = { version = "0.16.5", features = ["auto-initialize"] }
 reqwest = { version = "0.11", features = ["json", "blocking"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.19.2", features = ["full"] }
 tungstenite = "0.17.0"
 tokio-tungstenite = { version = "0.17.1", features = ["native-tls", "stream"] }
 serde_json = "1.0"
@@ -31,7 +31,7 @@ smartcore = { version = "0.2.1", default-features = false, features=["nalgebra-b
 
 flate2= "1.0.24"
 thiserror = "1.0.31"
-time = "0.3.9"
+time = "0.3.11"
 
 directories= "4.0.1"
 
@@ -42,11 +42,15 @@ ndarray = "0.15.4"
 
 parse_duration="2.1.1"
 
-async-std="1.11.0"
+async-std="1.12.0"
 
 log = "0.4.17"
 env_logger = "0.9.0"
 
+
+
+[package.metadata.maturin]
+python-source = "python"
 
 
 
