@@ -1,5 +1,3 @@
-// Copyright(c) yasstake 2022. All rights reserved. (no warranty)
-
 use failure::Error;
 use serde_derive::{Deserialize, Serialize};
 

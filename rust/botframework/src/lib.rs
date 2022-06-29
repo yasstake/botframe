@@ -1,5 +1,3 @@
-// Copyright(c) yasstake 2022. All rights reserved. (no warranty)
-
 use std::sync::Arc;
 
 use exchange::ohlcv_df_from_ohlc;
