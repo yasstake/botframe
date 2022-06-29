@@ -81,7 +81,7 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
 }
 
 #[test]
-fn test_list_cache_files() {
+fn clear_cache_files() {
     if let Some(base_path) = log_file_dir() {
         let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
         let paths = fs::read_dir(data_dir).unwrap();
@@ -91,8 +91,8 @@ fn test_list_cache_files() {
             let name = path.path();
             let extension = name.extension().unwrap();
 
-            println!("{}", extension.to_str().unwrap());
             if extension == "gz" {
+                println!("{:?}", name);
                 fs::remove_file(name.as_path()).unwrap();
             }
         }
