@@ -113,17 +113,15 @@ pub fn ohlcv_df_from_raw(
     if current_time_ms <= 0 {
         current_time_ms = df.column("timestamp").unwrap().max().unwrap();
     }
-
     let width_ms = width_sec * 1_000;
 
-    let start_time_ms = if count != 0 {
-        ((current_time_ms / width_ms) + 1) * width_ms - (width_ms * (count as i64))
-    } else {
-        df.column("timestamp").unwrap().min().unwrap()
-    };
-    let end_time_ms = current_time_ms;
+    let mut start_time_ms = 0; 
+    if count != 0 {
+        current_time_ms - (width_ms * (count as i64));
+    } 
 
-    return ohlcv_from_df(&df, start_time_ms, end_time_ms, width_sec);
+    // return ohlcv_from_df(&df, start_time_ms, end_time_ms, width_sec);
+    return ohlcv_from_df_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);    
 }
 
 use crate::pyutil::PrintTime;
@@ -142,17 +140,13 @@ pub fn ohlcv_df_from_ohlc(
 
     // println!("count{} width_sec{} width_ms{}", count, width_sec, width_ms);
 
-    let end_time_ms = current_time_ms;
-
     let mut start_time_ms = 0; 
     if count != 0 {
-        start_time_ms = round_down_tick(current_time_ms, width_ms) - width_ms * count;
-        // println!("starttime {}, {}, {}, count {}", start_time_ms, PrintTime(start_time_ms), end_time_ms - start_time_ms, count);
+        current_time_ms - (width_ms * (count as i64));
     } 
 
-    // println!("S/E {} {} {}", PrintTime(start_time_ms), PrintTime(end_time_ms), current_time_ms - end_time_ms);
-
-    return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
+    //return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
+    return ohlcv_from_ohlcv_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);    
 }
 
 
@@ -162,15 +156,14 @@ use polars::prelude::DynamicGroupOptions;
 use polars::prelude::Duration;
 use polars::prelude::ClosedWindow;
 
-pub fn ohlcv_from_df_by_downsample(
+pub fn ohlcv_from_df_dynamic(
     df: &DataFrame,
     start_time_ms: i64,
     end_time_ms: i64,
     width_sec: i64,
+    debug: bool
 ) -> DataFrame {
-    let mut df = select_df(df, start_time_ms, end_time_ms);
-
-    println!("{:?}", df);
+    let df = select_df(df, start_time_ms, end_time_ms);
 
     return df.lazy().groupby_dynamic(
         vec![],
@@ -180,11 +173,10 @@ pub fn ohlcv_from_df_by_downsample(
             period: Duration::new(width_sec * 1_000_000_000),   // データ取得の幅（グループ間隔と同じでOK)
             offset: Duration::parse("0m"),
             truncate: true,                             // タイムスタンプを切り下げてまとめる。
-            include_boundaries: true,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
+            include_boundaries: debug,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
             closed_window: ClosedWindow::Left,          // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
         },
     )
-
     .agg([
             col("price").first().alias("open"),
             col("price").max().alias("high"),
@@ -205,7 +197,7 @@ pub fn ohlcv_from_df_by_downsample(
 
 
 
-
+/*
 /// OHLCVからOLHCVを作る。
 /// TODO: 元データのOHLCV最後（最新）データには将来データが含まれているので削除する。
 pub fn ohlcv_from_df(
@@ -252,7 +244,9 @@ pub fn ohlcv_from_df(
 
     return df;
 }
+*/
 
+/*
 fn ohlcv_from_ohlcv(
     df: &DataFrame,
     start_time_ms: i64,
@@ -297,6 +291,49 @@ fn ohlcv_from_ohlcv(
 
     return df;
 }
+*/
+
+fn ohlcv_from_ohlcv_dynamic(
+    df: &DataFrame,
+    start_time_ms: i64,
+    end_time_ms: i64,
+    width_sec: i64,
+    debug: bool
+) -> DataFrame {
+
+    let df = select_df(df, start_time_ms, end_time_ms);
+
+    return df.lazy().groupby_dynamic(
+        vec![],
+        DynamicGroupOptions{
+            index_column: "timestamp".into(),
+            every: Duration::new(width_sec * 1_000_000_000),    // グループ間隔
+            period: Duration::new(width_sec * 1_000_000_000),   // データ取得の幅（グループ間隔と同じでOK)
+            offset: Duration::parse("0m"),
+            truncate: true,                             // タイムスタンプを切り下げてまとめる。
+            include_boundaries: debug,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
+            closed_window: ClosedWindow::Left,          // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
+        },
+    )
+    .agg([
+        col("open").first().alias("open"),
+        col("high").max().alias("high"),
+        col("low").min().alias("low"),
+        col("close").last().alias("close"),
+        col("vol").sum().alias("vol"),
+        ])
+        .sort(
+            "timestamp",
+            SortOptions {
+                descending: false,
+                nulls_last: false,
+            },
+        ).collect().unwrap();
+}
+
+
+
+
 
 pub trait MaketAgent {
     fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
@@ -367,7 +404,6 @@ impl Market {
         self.trade_history = self.trade_history.drop_duplicates(true, None).unwrap();
     }
 
-    // TODO: ms -> ns?
     pub fn select_df(&mut self, mut start_time_ms: i64, mut end_time_ms: i64) -> DataFrame {
         if start_time_ms == 0 {
             start_time_ms = self.start_time();
@@ -625,8 +661,16 @@ fn test_make_olhc() {
     let rec_no = m.history_size();
     println!("hisorysize={}", rec_no);
 
-    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 1, 1000);
+    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 60, 3);
     println!("{}", df.head(Some(12)));
+
+    let df = ohlcv_from_df_dynamic(&&m.trade_history, 0, 0, 60, false);
+    println!("{}", df.head(Some(12)));
+
+
+    let df = ohlcv_df_from_ohlc(&df, last_time, 60, 3);
+    println!("{}", df.head(Some(12)));
+
 
     let df = ohlcv_df_from_raw(&m.trade_history, last_time, 2, 1000);
     println!("{}", df.head(Some(12)));
@@ -664,7 +708,7 @@ fn test_make_olhc() {
 
 #[test]
 fn test_make_olhc_downsample() {
-    let mut m = load_dummy_data();
+    let m = load_dummy_data();
 
     let start_time = m.start_time();
     let last_time = m.end_time();
@@ -672,14 +716,22 @@ fn test_make_olhc_downsample() {
     println!("{} {}", start_time, last_time);
 
 
-    let df =  ohlcv_from_df_by_downsample(&m.trade_history, 0, 0, 60);
+    let df =  ohlcv_from_df_dynamic(&m.trade_history, 0, 0, 60, false);
     println!("{}", df.head(Some(12)));
+
+    let df =  ohlcv_from_ohlcv_dynamic(&df, 0, 0, 60, true);
+    println!("{}", df.head(Some(12)));
+
+    let df =  ohlcv_from_ohlcv_dynamic(&df, 0, 0, 120, true);
+    println!("{}", df.head(Some(12)));
+
 
 
 
 
 }
 
+/*
 #[test]
 fn test_make_ohlcv_from_ohlcv() {
     let mut m = load_dummy_data();
@@ -722,6 +774,9 @@ fn test_make_ohlcv_from_ohlcv() {
 
     */
 }
+
+*/
+
 
 #[test]
 fn test_add_trade() {

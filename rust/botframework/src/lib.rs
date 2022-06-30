@@ -95,7 +95,7 @@ use polars_core::datatypes::AnyValue::Float64;
 use crate::exchange::session::SessionValue;
 use pyo3::types::PyList;
 
-use crate::exchange::ohlcv_from_df;
+use crate::exchange::ohlcv_from_df_dynamic;
 
 #[pyclass(module = "rbot")]
 struct DummyBb {
@@ -625,7 +625,7 @@ impl DummyBb {
 
         let df = &self.market._df();
 
-        let df = ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
+        let df = ohlcv_from_df_dynamic(df, start_time_ms, end_time_ms, width_sec, false);
 
         let array: ndarray::Array2<f64> = df
             .select(&["timestamp", "open", "high", "low", "close", "vol"])
