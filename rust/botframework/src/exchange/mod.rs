@@ -5,6 +5,7 @@ use polars::prelude::ChunkApply;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::NamedFrom;
+use polars::prelude::PolarsTemporalGroupby;
 use polars::prelude::Series;
 use polars::prelude::SortOptions;
 
@@ -80,8 +81,16 @@ impl TradeBlock {
 
 use numpy::ndarray;
 
-pub fn select_df(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
-    // println!("Select from{:?} {:?} / to {:?} {:?}", start_time_ms, PrintTime(start_time_ms), end_time_ms, PrintTime(end_time_ms));
+pub fn select_df(df: &DataFrame, mut start_time_ms: i64, mut end_time_ms: i64) -> DataFrame {
+    /*
+    if start_time_ms == 0 {
+        start_time_ms = 0;
+    }
+    */
+
+    if end_time_ms == 0 {
+        end_time_ms = df.column("timestamp").unwrap().max().unwrap();
+    }
 
     let mask = df.column("timestamp").unwrap().gt(start_time_ms).unwrap()
         & df.column("timestamp").unwrap().lt_eq(end_time_ms).unwrap();
@@ -145,6 +154,56 @@ pub fn ohlcv_df_from_ohlc(
 
     return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
 }
+
+
+
+use polars::prelude::DynamicGroupOptions;
+
+use polars::prelude::Duration;
+use polars::prelude::ClosedWindow;
+
+pub fn ohlcv_from_df_by_downsample(
+    df: &DataFrame,
+    start_time_ms: i64,
+    end_time_ms: i64,
+    width_sec: i64,
+) -> DataFrame {
+    let mut df = select_df(df, start_time_ms, end_time_ms);
+
+    println!("{:?}", df);
+
+    return df.lazy().groupby_dynamic(
+        vec![],
+        DynamicGroupOptions{
+            index_column: "timestamp".into(),
+            every: Duration::parse("1m"),
+            period: Duration::parse("1m"),
+            offset: Duration::parse("0m"),
+            truncate: true,                     
+            include_boundaries: false,         
+            closed_window: ClosedWindow::Left,  
+        },
+    )
+
+    .agg([
+            col("price").first().alias("open"),
+            col("price").max().alias("high"),
+            col("price").min().alias("low"),
+            col("price").last().alias("close"),
+            col("size").sum().alias("vol"),
+        ])
+        .sort(
+            "timestamp",
+            SortOptions {
+                descending: false,
+                nulls_last: false,
+            },
+        ).collect().unwrap();
+
+}
+
+
+
 
 
 /// OHLCVからOLHCVを作る。
@@ -601,6 +660,22 @@ fn test_make_olhc() {
     println!("{}", df.head(Some(12)));
     println!("OHCL from OHCL={}", df.sum());
 */
+}
+
+#[test]
+fn test_make_olhc_downsample() {
+    let mut m = load_dummy_data();
+
+    let start_time = m.start_time();
+    let last_time = m.end_time();
+
+    println!("{} {}", start_time, last_time);
+
+
+    let df =  ohlcv_from_df_by_downsample(&m.trade_history, 0, 0, 1000);
+    println!("{}", df.head(Some(12)));
+
+
 
 
 }

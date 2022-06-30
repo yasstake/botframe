@@ -2,8 +2,8 @@
 // Copyright(c) yasstake 2022. All rights reserved. (no warranty)
 
 #[cfg(test)]
-pub const CSVDATA: &str = r#"
-    timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional
+pub const CSVDATA: &str = 
+r#"timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional
     1651449601,BTCUSD,Sell,258,38458.00,MinusTick,a0dd4504-db3c-535f-b43b-4de38f581b79,670861.7192781736,258,0.006708617192781736
     1651449602,BTCUSD,Sell,127,38458.00,ZeroMinusTick,a97a6e42-4977-575e-b74d-c7e8e9155b03,330230.38119506993,127,0.0033023038119506993
     1651449602,BTCUSD,Buy,22,38458.50,PlusTick,f26eeaf5-f1f6-506c-a48f-c7c8f2225a87,57204.519157013405,22,0.0005720451915701341
