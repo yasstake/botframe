@@ -11,7 +11,7 @@ use std::io::prelude::*;
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
 
-fn log_file_dir() -> Option<ProjectDirs> {
+pub fn log_file_dir() -> Option<ProjectDirs> {
     ProjectDirs::from("net", "takibi", "rusty-exchange")
 }
 
@@ -19,7 +19,7 @@ fn log_file_dir() -> Option<ProjectDirs> {
 // default "~/BBLOG/" will be used.
 // TODO: if environment variable "BB_LOG_DIR" set, that will be used.
 
-fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
+pub fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
     if let Some(base_path) = log_file_dir() {
         let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
         let full_path = data_dir.join(bb_log_file_name(yyyy, mm, dd));

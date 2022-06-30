@@ -403,6 +403,8 @@ impl DummyBb {
     }
 }
 
+use crate::bb::log::log_file_dir;
+
 #[pymethods]
 impl DummyBb {
     #[new]
@@ -418,12 +420,13 @@ impl DummyBb {
 
     fn __str__(&mut self) -> String {
         return format!(
-            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
+            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{} data_dir {:?}",
             self.get_log_start_ms().unwrap(),
             PrintTime(self.get_log_start_ms().unwrap()),
             self.get_log_end_ms().unwrap(),
             PrintTime(self.get_log_end_ms().unwrap()),
-            self.get_number_of_records()
+            self.get_number_of_records(),
+            log_file_dir()
         );
     }
 
@@ -612,7 +615,14 @@ impl DummyBb {
 
     /// 開始時間と終了時間、間隔を指定してohlcvをつくる。
     /// 出力は時間順。
-    fn ohlcv(&mut self, start_time_ms: i64, end_time_ms: i64, width_sec: i64) -> Py<PyArray2<f64>> {
+    fn ohlcv(&mut self, mut start_time_ms: i64, mut end_time_ms: i64, width_sec: i64) -> Py<PyArray2<f64>> {
+        if start_time_ms == 0 {
+            start_time_ms = self.get_log_start_ms().unwrap();
+        }
+        if end_time_ms == 0 {
+            end_time_ms = self.get_log_end_ms().unwrap();
+        }
+
         let df = &self.market._df();
 
         let df = ohlcv_from_df(df, start_time_ms, end_time_ms, width_sec);
