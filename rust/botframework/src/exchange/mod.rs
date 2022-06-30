@@ -180,7 +180,7 @@ pub fn ohlcv_from_df_by_downsample(
             period: Duration::new(width_sec * 1_000_000_000),   // データ取得の幅（グループ間隔と同じでOK)
             offset: Duration::parse("0m"),
             truncate: true,                             // タイムスタンプを切り下げてまとめる。
-            include_boundaries: false,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
+            include_boundaries: true,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
             closed_window: ClosedWindow::Left,          // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
         },
     )
@@ -672,7 +672,7 @@ fn test_make_olhc_downsample() {
     println!("{} {}", start_time, last_time);
 
 
-    let df =  ohlcv_from_df_by_downsample(&m.trade_history, 0, 0, 1);
+    let df =  ohlcv_from_df_by_downsample(&m.trade_history, 0, 0, 60);
     println!("{}", df.head(Some(12)));
 
 
