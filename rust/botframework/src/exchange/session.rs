@@ -498,8 +498,10 @@ impl SessionValue {
     // TODO: もっと上位で設定をかえられるようにする。
     // MaketとTakerでも両率を変更する。
     fn calc_profit(order: &mut OrderResult) {
-        order.fee = order.size * 0.0006;
-        order.total_profit = order.profit - order.fee;
+        if order.status == OrderStatus::OpenPosition || order.status == OrderStatus::ClosePosition {
+            order.fee = order.size * 0.0001;
+            order.total_profit = order.profit - order.fee;
+        }
     }
 
     /* TODO: マージンの計算とFundingRate計算はあとまわし */

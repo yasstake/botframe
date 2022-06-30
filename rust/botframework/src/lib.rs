@@ -426,7 +426,7 @@ impl DummyBb {
             self.get_log_end_ms().unwrap(),
             PrintTime(self.get_log_end_ms().unwrap()),
             self.get_number_of_records(),
-            log_file_dir()
+            log_file_dir().unwrap().data_dir()
         );
     }
 
@@ -730,6 +730,8 @@ pub struct PyOrderResult {
     #[pyo3(get)]
     pub close_price: f64,
     #[pyo3(get)]
+    pub price: f64,
+    #[pyo3(get)]
     pub size: f64, // in usd
     #[pyo3(get)]
     pub volume: f64, //in BTC
@@ -777,6 +779,7 @@ impl PyOrderResult {
             status: result.status.to_string(),
             open_price: result.open_price,
             close_price: result.close_price,
+            price: result.price,
             size: result.size,
             volume: result.volume,
             profit: result.profit,

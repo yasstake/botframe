@@ -23,6 +23,7 @@ def result_to_df(result_list):
     status = []
     open_price = []
     close_price = []
+    price = []
     size = []
     volume = []
     profit = []
@@ -41,6 +42,7 @@ def result_to_df(result_list):
         status.append(item.status)
         open_price.append(item.open_price)
         close_price.append(item.close_price)
+        price.append(item.price)
         size.append(item.size)
         volume.append(item.volume)
         profit.append(item.profit)
@@ -53,10 +55,10 @@ def result_to_df(result_list):
     data={"timestamp": timestamp, "order_id": order_id, "sub_id": order_sub_id,
           "order_type": order_type, "post_only": post_only, "create_time": create_time,
           "status":  status, "open_price": open_price, "close_price": close_price,
-          "size": size, "volume": volume, "profit": profit, "fee": fee,
+          "price": price, "size": size, "volume": volume, "profit": profit, "fee": fee,
           "total_profit": total_profit, "pos_change": position_change, "message": message},
     columns=["timestamp", "order_id", "sub_id", "order_type", "post_only",
-             "create_time", "status", "open_price", "close_price", "size", "volume",
+             "create_time", "status", "open_price", "close_price", "price", "size", "volume",
              "profit", "fee", "total_profit", "pos_change", "message"])
     df["timestamp"] = pd.to_datetime((df["timestamp"]), utc=True, unit="ms")
     df["create_time"] = pd.to_datetime((df["create_time"]), utc=True, unit="ms")

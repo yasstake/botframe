@@ -95,6 +95,7 @@ pub struct OrderResult {
     pub status: OrderStatus,
     pub open_price: f64,
     pub close_price: f64,
+    pub price: f64,
     pub size: f64,   // in usd
     pub volume: f64, //in BTC
     pub profit: f64,
@@ -115,6 +116,7 @@ impl OrderResult {
             status: status,
             open_price: order.price,
             close_price: 0.0,
+            price: order.price,
             size: order.size,
             volume: order.size / order.price,
             profit: 0.0,
