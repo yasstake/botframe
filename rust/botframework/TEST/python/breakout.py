@@ -15,6 +15,9 @@ class Agent:
         if len(ohlcv_df.index) < 6:                 # データが過去６本分そろっていない場合はなにもせずリターン
             return 
 
+        print(rbot.PrintTime(time_ms))
+        print(ohlcv_df);        
+
         ohlcv_df["range"] = ohlcv_df["high"] - ohlcv_df["low"]      # レンジを計算
 
         ohlcv_latest = ohlcv_df[-2:-1]     # 最新足１本
@@ -51,9 +54,11 @@ class Agent:
 
 
 bb = rbot.DummyBb()
-bb.log_load(20)
+bb.log_load(2)
+
 
 agent = Agent()
+bb.debug_loop_count = 10
 result = bb.run(agent, 60*60*2)
 
 df = result_to_df(result)
