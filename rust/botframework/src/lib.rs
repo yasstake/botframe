@@ -420,15 +420,25 @@ impl DummyBb {
 
     fn __str__(&mut self) -> String {
         return format!(
-            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{} data_dir {:?}",
+            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
             self.get_log_start_ms().unwrap(),
             PrintTime(self.get_log_start_ms().unwrap()),
             self.get_log_end_ms().unwrap(),
             PrintTime(self.get_log_end_ms().unwrap()),
             self.get_number_of_records(),
-            log_file_dir().unwrap().data_dir()
         );
     }
+
+    #[getter]
+    fn get_log_cache_dir(&self) -> String {
+        return log_file_dir().unwrap().data_dir().to_str().unwrap().to_string();
+    }
+
+    /*
+    fn save(&self, path: String) {
+        //self.market._df().write_ipc
+    }
+    */
 
     //--------------------------------------------------------------------------------------------
     // Market (Session) API

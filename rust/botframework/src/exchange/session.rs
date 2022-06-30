@@ -78,10 +78,10 @@ impl Position {
         order.open_price = self.price;
         if order.order_type == OrderType::Buy {
             // 買い注文でクローズ
-            order.profit = (order.close_price - order.open_price) * order.volume;
+            order.profit = (order.open_price - order.close_price) * order.volume;
         } else if order.order_type == OrderType::Sell {
             //売り注文でクローズ
-            order.profit = (order.open_price - order.close_price) * order.volume;
+            order.profit = (order.close_price - order.open_price) * order.volume;
         }
 
         // ポジションの整理
