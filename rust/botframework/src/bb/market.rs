@@ -53,6 +53,8 @@ impl Bb {
     }
 }
 
+use polars_core::error::Result;
+
 // Delegate to self.market  <Market>type
 impl MarketInfo for Bb {
     fn _df(&mut self) -> DataFrame {
@@ -77,6 +79,15 @@ impl MarketInfo for Bb {
     fn reset_df(&mut self) {
         self.market.reset_df();
     }
+
+    fn save(&mut self, file_name: &str)  -> Result<()> {
+        return self.market.save(file_name);
+    }
+
+    fn load(&mut self, file_name: &str) -> Result<()> {
+        return self.market.load(file_name);
+    }
+
 }
 
 

@@ -435,6 +435,44 @@ impl DummyBb {
         );
     }
 
+    fn dump(&mut self) {
+        let user_dir = log_file_dir().unwrap().clone();
+        let data_dir = user_dir.data_dir();
+        let dump_file = data_dir.join("bb_dumpfile.ipc");
+
+        self.save(dump_file.to_str().unwrap());
+    }
+
+    fn restore(&mut self) {
+        let user_dir = log_file_dir().unwrap().clone();
+        let data_dir = user_dir.data_dir();
+        let dump_file = data_dir.join("bb_dumpfile.ipc");
+
+        self.load(dump_file.to_str().unwrap());
+    }
+
+    fn save(&mut self, file_name: &str) {
+        match self.market.save(file_name) {
+            Ok(_) => {
+                // Ok.
+            }
+            Err(e) => {
+                println!("save error: {:?}", e);
+            }
+        }
+    }
+
+    fn load(&mut self, file_name: &str) {
+        match self.market.load(file_name) {
+            Ok(_) => {
+                // Ok
+            },
+            Err(e) => {
+                println!("load error: {:?}", e);
+            }
+        }
+    }
+
     #[getter]
     fn get_log_cache_dir(&self) -> String {
         return log_file_dir().unwrap().data_dir().to_str().unwrap().to_string();

@@ -9,9 +9,6 @@ use polars::prelude::PolarsTemporalGroupby;
 use polars::prelude::Series;
 use polars::prelude::SortOptions;
 
-// pub const BUY: &str = "B";
-// pub const SELL: &str = "S";
-
 pub mod order;
 pub mod session;
 
@@ -100,7 +97,7 @@ pub fn select_df(df: &DataFrame, mut start_time_ms: i64, mut end_time_ms: i64) -
     return df;
 }
 
-pub fn round_down_tick(current_time_ms: i64, tick_width: i64) -> i64{
+pub fn round_down_tick(current_time_ms: i64, tick_width: i64) -> i64 {
     return (current_time_ms / tick_width) * tick_width;
 }
 
@@ -115,13 +112,13 @@ pub fn ohlcv_df_from_raw(
     }
     let width_ms = width_sec * 1_000;
 
-    let mut start_time_ms = 0; 
+    let mut start_time_ms = 0;
     if count != 0 {
         current_time_ms - (width_ms * (count as i64));
-    } 
+    }
 
     // return ohlcv_from_df(&df, start_time_ms, end_time_ms, width_sec);
-    return ohlcv_from_df_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);    
+    return ohlcv_from_df_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);
 }
 
 use crate::pyutil::PrintTime;
@@ -140,91 +137,43 @@ pub fn ohlcv_df_from_ohlc(
 
     // println!("count{} width_sec{} width_ms{}", count, width_sec, width_ms);
 
-    let mut start_time_ms = 0; 
+    let mut start_time_ms = 0;
     if count != 0 {
         current_time_ms - (width_ms * (count as i64));
-    } 
+    }
 
     //return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
-    return ohlcv_from_ohlcv_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);    
+    return ohlcv_from_ohlcv_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);
 }
-
-
 
 use polars::prelude::DynamicGroupOptions;
 
-use polars::prelude::Duration;
 use polars::prelude::ClosedWindow;
+use polars::prelude::Duration;
 
 pub fn ohlcv_from_df_dynamic(
     df: &DataFrame,
     start_time_ms: i64,
     end_time_ms: i64,
     width_sec: i64,
-    debug: bool
+    debug: bool,
 ) -> DataFrame {
     let df = select_df(df, start_time_ms, end_time_ms);
 
-    return df.lazy().groupby_dynamic(
-        vec![],
-        DynamicGroupOptions{
-            index_column: "timestamp".into(),
-            every: Duration::new(width_sec * 1_000_000_000),    // グループ間隔
-            period: Duration::new(width_sec * 1_000_000_000),   // データ取得の幅（グループ間隔と同じでOK)
-            offset: Duration::parse("0m"),
-            truncate: true,                             // タイムスタンプを切り下げてまとめる。
-            include_boundaries: debug,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
-            closed_window: ClosedWindow::Left,          // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
-        },
-    )
-    .agg([
-            col("price").first().alias("open"),
-            col("price").max().alias("high"),
-            col("price").min().alias("low"),
-            col("price").last().alias("close"),
-            col("size").sum().alias("vol"),
-        ])
-        .sort(
-            "timestamp",
-            SortOptions {
-                descending: false,
-                nulls_last: false,
+    return df
+        .lazy()
+        .groupby_dynamic(
+            vec![],
+            DynamicGroupOptions {
+                index_column: "timestamp".into(),
+                every: Duration::new(width_sec * 1_000_000_000), // グループ間隔
+                period: Duration::new(width_sec * 1_000_000_000), // データ取得の幅（グループ間隔と同じでOK)
+                offset: Duration::parse("0m"),
+                truncate: true,            // タイムスタンプを切り下げてまとめる。
+                include_boundaries: debug, // データの下限と上限を結果に含めるかどうか？(falseでOK)
+                closed_window: ClosedWindow::Left, // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
             },
-        ).collect().unwrap();
-
-}
-
-
-
-
-/*
-/// OHLCVからOLHCVを作る。
-/// TODO: 元データのOHLCV最後（最新）データには将来データが含まれているので削除する。
-pub fn ohlcv_from_df(
-    df: &DataFrame,
-    start_time_ms: i64,
-    end_time_ms: i64,
-    width_sec: i64,
-) -> DataFrame {
-    let mut df = select_df(df, start_time_ms, end_time_ms);
-
-    let t = df.column("timestamp").unwrap();
-
-    let vec_t: Vec<NaiveDateTime> = t
-        .datetime()
-        .expect("Type Error")
-        .into_iter()
-        .map(|x| (NaiveDateTime::from_timestamp((x.unwrap() / 1_000 / width_sec) * width_sec, 0)))
-        .collect();
-
-    let new_t: Series = Series::new("time_slot", vec_t);
-
-    df.replace("timestamp", new_t);
-
-    let df = df.lazy();
-
-    let df = df
-        .groupby([col("timestamp")])
+        )
         .agg([
             col("price").first().alias("open"),
             col("price").max().alias("high"),
@@ -241,37 +190,32 @@ pub fn ohlcv_from_df(
         )
         .collect()
         .unwrap();
-
-    return df;
 }
-*/
 
-/*
-fn ohlcv_from_ohlcv(
+
+fn ohlcv_from_ohlcv_dynamic(
     df: &DataFrame,
     start_time_ms: i64,
     end_time_ms: i64,
     width_sec: i64,
+    debug: bool,
 ) -> DataFrame {
-    let mut df = select_df(df, start_time_ms, end_time_ms);
+    let df = select_df(df, start_time_ms, end_time_ms);
 
-    let t = df.column("timestamp").unwrap();
-
-    let vec_t: Vec<NaiveDateTime> = t
-        .datetime()
-        .expect("Type Error")
-        .into_iter()
-        .map(|x| (NaiveDateTime::from_timestamp((x.unwrap() / 1_000 / width_sec) * width_sec, 0)))
-        .collect();
-
-    let new_t: Series = Series::new("time_slot", vec_t);
-
-    df.replace("timestamp", new_t);
-
-    let df = df.lazy();
-
-    let df = df
-        .groupby([col("timestamp")])
+    return df
+        .lazy()
+        .groupby_dynamic(
+            vec![],
+            DynamicGroupOptions {
+                index_column: "timestamp".into(),
+                every: Duration::new(width_sec * 1_000_000_000), // グループ間隔
+                period: Duration::new(width_sec * 1_000_000_000), // データ取得の幅（グループ間隔と同じでOK)
+                offset: Duration::parse("0m"),
+                truncate: true,            // タイムスタンプを切り下げてまとめる。
+                include_boundaries: debug, // データの下限と上限を結果に含めるかどうか？(falseでOK)
+                closed_window: ClosedWindow::Left, // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
+            },
+        )
         .agg([
             col("open").first().alias("open"),
             col("high").max().alias("high"),
@@ -288,52 +232,7 @@ fn ohlcv_from_ohlcv(
         )
         .collect()
         .unwrap();
-
-    return df;
 }
-*/
-
-fn ohlcv_from_ohlcv_dynamic(
-    df: &DataFrame,
-    start_time_ms: i64,
-    end_time_ms: i64,
-    width_sec: i64,
-    debug: bool
-) -> DataFrame {
-
-    let df = select_df(df, start_time_ms, end_time_ms);
-
-    return df.lazy().groupby_dynamic(
-        vec![],
-        DynamicGroupOptions{
-            index_column: "timestamp".into(),
-            every: Duration::new(width_sec * 1_000_000_000),    // グループ間隔
-            period: Duration::new(width_sec * 1_000_000_000),   // データ取得の幅（グループ間隔と同じでOK)
-            offset: Duration::parse("0m"),
-            truncate: true,                             // タイムスタンプを切り下げてまとめる。
-            include_boundaries: debug,                  // データの下限と上限を結果に含めるかどうか？(falseでOK)
-            closed_window: ClosedWindow::Left,          // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
-        },
-    )
-    .agg([
-        col("open").first().alias("open"),
-        col("high").max().alias("high"),
-        col("low").min().alias("low"),
-        col("close").last().alias("close"),
-        col("vol").sum().alias("vol"),
-        ])
-        .sort(
-            "timestamp",
-            SortOptions {
-                descending: false,
-                nulls_last: false,
-            },
-        ).collect().unwrap();
-}
-
-
-
-
 
 pub trait MaketAgent {
     fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
@@ -350,7 +249,9 @@ pub trait MarketInfo {
         start_time_ms: i64,
         end_time_ms: i64,
     );
-    fn reset_df(&mut self) ;
+    fn reset_df(&mut self);
+    fn save(&mut self, file_name: &str)  -> Result<()>;
+    fn load(&mut self, file_name: &str) -> Result<()>;
 }
 
 pub struct Market {
@@ -431,6 +332,10 @@ impl Market {
     pub fn get_session(&mut self) -> &mut SessionValue {
         return &mut self.session;
     }
+
+    fn _set_df(&mut self, df: DataFrame) {
+        self.trade_history = df;
+    }
 }
 
 use polars::prelude::Float64Type;
@@ -450,6 +355,39 @@ impl MarketInfo for Market {
 
     fn reset_df(&mut self) {
         self.trade_history = TradeBlock::new().to_data_frame();
+    }
+
+    fn save(&mut self, file_name: &str) -> Result<()> {
+    // create a file
+    let mut file = File::create(file_name).expect("could not create file");
+
+    let df = &mut self.trade_history;
+    
+    let result = IpcWriter::new(&mut file).finish(df);
+
+    match result {
+        Ok(_) => {Ok(())},
+        Err(e) => {Err(e)}
+    }
+    }
+
+
+    fn load(&mut self, file_name: &str) -> Result<()> {
+        let file = File::open(file_name).expect("file not found");
+
+        let result = IpcReader::new(file).finish();
+    
+        match result {
+            Ok(df) => {
+                // set df to market
+                self._set_df(df);
+
+                return Ok(());
+            },
+            Err(e) => {
+                return Err(e)
+            }
+        }
     }
 
     // プライベート用
@@ -602,11 +540,10 @@ fn test_make_history() {
     assert_eq!(market.end_time(), 2_999_999 * 1_000); // time is in msec
 }
 
-
 #[test]
 fn test_round_down_tick() {
     assert_eq!(round_down_tick(10010, 10), 10010);
-    assert_eq!(round_down_tick(10010, 100), 10000);    
+    assert_eq!(round_down_tick(10010, 100), 10000);
 }
 
 #[test]
@@ -667,10 +604,8 @@ fn test_make_olhc() {
     let df = ohlcv_from_df_dynamic(&&m.trade_history, 0, 0, 60, false);
     println!("{}", df.head(Some(12)));
 
-
     let df = ohlcv_df_from_ohlc(&df, last_time, 60, 3);
     println!("{}", df.head(Some(12)));
-
 
     let df = ohlcv_df_from_raw(&m.trade_history, last_time, 2, 1000);
     println!("{}", df.head(Some(12)));
@@ -687,8 +622,6 @@ fn test_make_olhc() {
     println!("{}", df.head(Some(12)));
     println!("5TOTAL={}", df.sum());
 
-
-
     let array = m._ohlcv(last_time, 5, 1000);
     println!("{}", array);
 
@@ -700,10 +633,10 @@ fn test_make_olhc() {
     println!("OHLC 5={}", df.sum());
 
     /*
-    let ohlcv_df = ohlcv_df_from_ohlc(&df, last_time, 5, 3);
-    println!("{}", df.head(Some(12)));
-    println!("OHCL from OHCL={}", df.sum());
-*/
+        let ohlcv_df = ohlcv_df_from_ohlc(&df, last_time, 5, 3);
+        println!("{}", df.head(Some(12)));
+        println!("OHCL from OHCL={}", df.sum());
+    */
 }
 
 #[test]
@@ -715,68 +648,15 @@ fn test_make_olhc_downsample() {
 
     println!("{} {}", start_time, last_time);
 
-
-    let df =  ohlcv_from_df_dynamic(&m.trade_history, 0, 0, 60, false);
+    let df = ohlcv_from_df_dynamic(&m.trade_history, 0, 0, 60, false);
     println!("{}", df.head(Some(12)));
 
-    let df =  ohlcv_from_ohlcv_dynamic(&df, 0, 0, 60, true);
+    let df = ohlcv_from_ohlcv_dynamic(&df, 0, 0, 60, true);
     println!("{}", df.head(Some(12)));
 
-    let df =  ohlcv_from_ohlcv_dynamic(&df, 0, 0, 120, true);
+    let df = ohlcv_from_ohlcv_dynamic(&df, 0, 0, 120, true);
     println!("{}", df.head(Some(12)));
-
-
-
-
-
 }
-
-/*
-#[test]
-fn test_make_ohlcv_from_ohlcv() {
-    let mut m = load_dummy_data();
-
-    let start_time = m.start_time();
-    println!("start_time {}", start_time);
-    let last_time = m.end_time();
-    println!("end_time {}", last_time);
-
-    let rec_no = m.history_size();
-    println!("hisorysize={}", rec_no);
-
-    let df = ohlcv_df_from_raw(&m.trade_history, last_time, 60, 1000);
-    println!("{}", df.head(Some(12)));
-
-    let df2 = ohlcv_from_ohlcv(&df, start_time, last_time, 120);
-    println!("{:?}", df2.head(Some(12)));
-
-    let df2 = ohlcv_from_ohlcv(&df, last_time - 5 * 60 *1_000, last_time, 120);
-    println!("{:?}", df2.head(Some(12)));
-
-    /*
-        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 2, 1000);
-        println!("{}", df.head(Some(12)));
-
-        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 120, 1000);
-        println!("{}", df.head(Some(12)));
-        println!("120TOTAL={}", df.sum());
-
-        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 10, 1000);
-        println!("{}", df.head(Some(12)));
-        println!("10TOTAL={}", df.sum());
-
-        let df = ohlcv_df_from_raw(&m.trade_history, last_time, 5, 1000);
-        println!("{}", df.head(Some(12)));
-        println!("5TOTAL={}", df.sum());
-
-        let array = m._ohlcv(last_time, 5, 1000);
-        println!("{}", array);
-
-    */
-}
-
-*/
-
 
 #[test]
 fn test_add_trade() {
@@ -919,4 +799,27 @@ fn test_df_loop() {
             assert!(false, "illeagaltype")
         }
     }
+}
+
+use polars::prelude::*;
+use std::fs::File;
+
+#[test]
+fn test_write_and_read_df() {
+    let mut m = load_dummy_data();
+
+    // create a file
+    let mut file = File::create("file.ipc").expect("could not create file");
+
+    let df = &mut m._df().clone();
+    println!("{:?}", df);
+
+    // write DataFrame to file
+    IpcWriter::new(&mut file).finish(df).unwrap();
+
+    let file = File::open("file.ipc").expect("file not found");
+
+    let df2 = IpcReader::new(file).finish().unwrap();
+
+    println!("{:?}", df2);
 }
