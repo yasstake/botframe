@@ -9,16 +9,13 @@ class Agent:
             self.K = param_K                           # パラメターKを設定する。
 
     def on_clock(self, time_ms: int, session):
-        #print(rbot.PrintTime(time_ms))        
-
         ohlcv_array = session.ohlcv(60*60*2, 6)     # 最新足０番目　＋　５本の足を取得。 最新は６番目。
         ohlcv_df = rbot.array_to_df(ohlcv_array)         # ndarrayをDataFrameへ変換
 
         if len(ohlcv_df.index) < 6:                 # データが過去６本分そろっていない場合はなにもせずリターン
             return 
 
-        #print(rbot.PrintTime(time_ms))
-        #print(ohlcv_df);        
+        print(rbot.PrintTime(time_ms), session.buy_edge_price, session.sell_edge_price)
 
         if session.sell_edge_price < session.buy_edge_price:
             print("Error?")
@@ -36,10 +33,10 @@ class Agent:
 
         #　執行方法（順報告のポジションがあったら保留。逆方向のポジションがのこっていたらドテン）
         if detect_long:
-            print("position", session.long_pos_size, session.short_pos_size)            
-            print("make long")
+            #    print("position", session.long_pos_size, session.short_pos_size)            
+            #        print("make long")
             if not session.long_pos_size:
-                print("makeorder")                                    
+            #    print("makeorder")                                    
                 if not session.short_pos_size:
 
                     return rbot.Order("Buy", session.buy_edge_price, 100000, 600, "Open Long")    
@@ -63,15 +60,14 @@ class Agent:
 
 
 bb = rbot.DummyBb()
-bb.log_load(100)
-
+#bb.log_load(100)
+bb.restore()
 
 agent = Agent()
 
 result = bb.run(agent, 60*60*2)
-#bb.debug_loop_count = 10
+bb.debug_loop_count = 100
 df = result_to_df(result)
-
 
 
 print(df)
