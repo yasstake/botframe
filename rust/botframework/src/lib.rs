@@ -143,6 +143,7 @@ impl Session for MainSession {
 
     fn make_order(
         &mut self,
+        timestamp: i64,
         side: OrderType,
         price: f64,
         size: f64,
@@ -151,12 +152,16 @@ impl Session for MainSession {
     ) -> Result<(), OrderStatus> {
         return self
             .session
-            .make_order(side, price, size, duration_ms, message);
+            .make_order(timestamp, side, price, size, duration_ms, message);
     }
 }
 
 use crate::exchange::order::Orders;
 use crate::exchange::session::Positions;
+
+fn make_clock_time(current_time_ms: i64, interval_sec: i64) -> i64 {
+    return (current_time_ms / 1_000 / interval_sec) * 1_000 * interval_sec;
+}
 
 #[pyclass(name = "Session")]
 #[derive(Clone)]
@@ -359,8 +364,9 @@ impl DummyBb {
         Ok(())
     }
 
-    fn make_single_order(&self, session: &mut MainSession, order: &PyOrder) -> PyResult<()> {
+    fn make_single_order(&self, timestamp: i64, session: &mut MainSession, order: &PyOrder) -> PyResult<()> {
         &session.make_order(
+            timestamp, 
             order.side,
             order.price,
             order.size,
@@ -371,14 +377,14 @@ impl DummyBb {
         Ok(())
     }
 
-    fn make_order(&self, session: &mut MainSession, result: &PyAny) -> PyResult<()> {
+    fn make_order(&self, timestamp: i64, session: &mut MainSession, result: &PyAny) -> PyResult<()> {
         if result.is_none() {
             return Ok(());
         }
 
         match result.extract::<PyOrder>() {
             Ok(order) => {
-                self.make_single_order(session, &order)?;
+                self.make_single_order(timestamp, session, &order)?;
             }
             Err(e) => {
                 // マルチオーダーの処理
@@ -387,7 +393,7 @@ impl DummyBb {
                         for order_item in list.iter() {
                             match result.extract::<PyOrder>() {
                                 Ok(order_item) => {
-                                    self.make_single_order(session, &order_item)?;
+                                    self.make_single_order(timestamp, session, &order_item)?;
                                 }
                                 Err(e) => {}
                             }
@@ -525,8 +531,11 @@ impl DummyBb {
 
                 // TODO: May skip wam up time
                 // 最初のインターバル毎の時刻で呼び出し。
+
+                // 一つ前のTickの時刻で処理して、最後にTick情報で状態（セッションを更新する）
                 let current_time_ms = py_session.get_timestamp_ms();
-                let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+                //let clock_time = (time / 1_000 / interval_sec) * 1_000 * interval_sec;
+                let clock_time = make_clock_time(time, interval_sec);
 
                 if want_clock && (current_time_ms < clock_time) && warm_up_ok_flag {
                     if self._debug_loop_count != 0 {
@@ -540,7 +549,7 @@ impl DummyBb {
                     let py_session2 = Py::new(py, copy_session)?;
 
                     let result = agent.call_method1("on_clock", (clock_time, py_session2))?;
-                    self.make_order(&mut py_session, &result)?;
+                    self.make_order(clock_time, &mut py_session, &result)?;
                 }
 
                 // すべてのイベントを呼び出し
@@ -560,13 +569,14 @@ impl DummyBb {
                             let result = agent
                                 .call_method1("on_tick_process", (time, &py_session2, result))?;
 
-                            self.make_order(&mut py_session, &result)?;
+                            self.make_order(clock_time, &mut py_session, &result)?;
                         } else {
-                            self.make_order(&mut py_session, &result)?;
+                            self.make_order(clock_time, &mut py_session, &result)?;
                         }
                     }
                 }
 
+                // ログデータの処理
                 let exec_results = py_session
                     // .session
                     .main_exec_event(time, OrderType::from_str(bs), price, size);
@@ -722,7 +732,7 @@ use crate::exchange::order::OrderStatus;
 #[pyclass]
 pub struct PyOrderResult {
     #[pyo3(get)]
-    pub timestamp: i64,
+    pub update_time: i64,
     #[pyo3(get)]
     pub order_id: String,
     #[pyo3(get)]
@@ -780,7 +790,7 @@ impl PyOrderResult {
             }
         }
         return PyOrderResult {
-            timestamp: result.timestamp,
+            update_time: result.update_time,
             order_id: result.order_id.clone(),
             order_sub_id: result.order_sub_id.to_string(),
             order_type: result.order_type.to_long_string(),

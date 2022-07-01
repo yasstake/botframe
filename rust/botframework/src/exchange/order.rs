@@ -86,7 +86,7 @@ impl OrderStatus {
 
 #[derive(Debug, Clone)]
 pub struct OrderResult {
-    pub timestamp: i64,
+    pub update_time: i64,
     pub order_id: String,
     pub order_sub_id: i32, // 分割された場合に利用
     pub order_type: OrderType,
@@ -107,7 +107,7 @@ pub struct OrderResult {
 impl OrderResult {
     pub fn from_order(timestamp: i64, order: &Order, status: OrderStatus) -> Self {
         return OrderResult {
-            timestamp: timestamp,
+            update_time: timestamp,
             order_id: order.order_id.clone(),
             order_sub_id: 0,
             order_type: order.order_type,

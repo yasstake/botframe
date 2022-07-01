@@ -14,7 +14,7 @@ def array_to_df(array):
 
 
 def result_to_df(result_list):
-    timestamp = []
+    update_time = []
     order_id = []
     order_sub_id = []
     order_type = []
@@ -33,7 +33,7 @@ def result_to_df(result_list):
     message = []
 
     for item in result_list:
-        timestamp.append(item.timestamp)
+        update_time.append(item.update_time)
         order_id.append(item.order_id)
         order_sub_id.append(item.order_sub_id)
         order_type.append(item.order_type)
@@ -52,15 +52,15 @@ def result_to_df(result_list):
         message.append(item.message)
 
     df = pd.DataFrame(
-    data={"timestamp": timestamp, "order_id": order_id, "sub_id": order_sub_id,
+    data={"update_time": update_time, "order_id": order_id, "sub_id": order_sub_id,
           "order_type": order_type, "post_only": post_only, "create_time": create_time,
           "status":  status, "open_price": open_price, "close_price": close_price,
           "price": price, "size": size, "volume": volume, "profit": profit, "fee": fee,
           "total_profit": total_profit, "pos_change": position_change, "message": message},
-    columns=["timestamp", "order_id", "sub_id", "order_type", "post_only",
+    columns=["update_time", "order_id", "sub_id", "order_type", "post_only",
              "create_time", "status", "open_price", "close_price", "price", "size", "volume",
              "profit", "fee", "total_profit", "pos_change", "message"])
-    df["timestamp"] = pd.to_datetime((df["timestamp"]), utc=True, unit="ms")
+    df["update_time"] = pd.to_datetime((df["update_time"]), utc=True, unit="ms")
     df["create_time"] = pd.to_datetime((df["create_time"]), utc=True, unit="ms")
     df["sum_profit"] = df["total_profit"].cumsum()
     df["sum_pos"] = df["pos_change"].cumsum()
