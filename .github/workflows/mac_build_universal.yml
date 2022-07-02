@@ -1,4 +1,4 @@
-name: Mac build package
+name: Mac build package(maturin universal2)
 
 on:
   workflow_dispatch:
