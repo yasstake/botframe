@@ -42,7 +42,7 @@ jobs:
         cd rust/botframework; 
         python -m pip install --upgrade pip
         python -m pip install maturin 
-        maturin build  --release ---universal2
+        maturin build  --release --universal2
 
     - name: linux-wheels
       uses: actions/upload-artifact@v3
