@@ -12,27 +12,21 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: debug
-      run: |
-        echo '::echo::on'
-        pwd
-        cd rust/botframework
-        pwd
-        ls
-    - name: Build
+    - name: Build Wheel
       run: cd rust/botframework; cargo build --verbose
     - name: Build Package
       run: |
         cd rust/botframework; 
         python -m pip install build
         python -m build .
-    - name: linux-wheels
+    - name: upload windows-wheels
       uses: actions/upload-artifact@v3
       with:
         name: linux-wheel
-        path: dist/*
+        path: dist/*.whl
+  
 
