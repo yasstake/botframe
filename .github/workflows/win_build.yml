@@ -48,7 +48,7 @@ jobs:
     - name: wheels upload
       uses: actions/upload-artifact@v3
       with:
-        name: wheels
+        name: windows-wheels
         path: rust/botframework/target/wheels/*
 
 

@@ -11,23 +11,38 @@ jobs:
 
     runs-on: macos--latest
 
-    steps:
     - uses: actions/checkout@v3
-    - name: Build Wheel
-      run: cd rust/botframework; cargo build --verbose
-    - name: Show Xcode version
-      run: xcodebuild -version
-    - name: Install Rust
-      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh 
+
+    - name: Stable with rustfmt and clippy
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: rustfmt, clippy
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}    
+
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
     - name: Build Package
       run: |
         cd rust/botframework; 
-        python -m pip install build
-        python -m build .
-    - name: upload windows-wheels
+        python -m pip install --upgrade pip
+        python -m pip install maturin 
+        maturin build  --release --universal2
+
+    - name: wheels upload
       uses: actions/upload-artifact@v3
       with:
-        name: mac-wheel
-        path: rust/botframework/dist/*
-  
+        name: linux-wheels
+        path: rust/botframework/target/wheels/*
 
