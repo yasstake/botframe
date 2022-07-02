@@ -1,7 +1,11 @@
-rust/botframework/Cargo.lock
-rust/botframework/TESTDATA/.ipynb_checkpoints/*
+.ipynb_checkpoints/*
 rust/rustdf/Cargo.lock
 Untitled*
 
-rust/botframework/TEST/.ipynb_checkpoints/interface_test-checkpoint
+rust/botframework/Cargo.lock
+rust/botframework/TESTDATA/.ipynb_checkpoints/*
+rust/botframework/TEST/.ipynb_checkpoints/*
 rust/botframework/TEST/interface_test
+rust/botframework/.ipynb_checkpoints/*
+rust/botframework/TEST/python/.ipynb_checkpoints/*
+

@@ -11,3 +11,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+dependencies = [
+  "numpy",
+  "pandas",
+  "matplotlib",
+  "mplfinance"
+]
