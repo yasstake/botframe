@@ -29,4 +29,4 @@ jobs:
       run: |
         cd rust/botframework; 
         python -m pip install build
-        python -m pip build .
+        python -m build .
