@@ -17,8 +17,14 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: debug
-      run: pwd; ls
+      run: |
+        ::echo::on
+        pwd
+        ls
     - name: Build
       run: cd rust/botframework; cargo build --verbose
-    - name: Run tests
-      run: cd rust/botframework; cargo test --verbose
+    - name: Build Package
+      run: |
+        cd rust/botframework; 
+        python -m pip install build
+        python -m pip build .
