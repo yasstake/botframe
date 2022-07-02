@@ -1,4 +1,4 @@
-name: Rust
+name: windows build
 
 on:
   workflow_dispatch:
@@ -24,6 +24,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: windows-wheel
-        path: rust/botframework/dist/*.whl
+        path: rust/botframework/dist/*
+
   
 

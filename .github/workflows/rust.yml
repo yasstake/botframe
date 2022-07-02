@@ -1,4 +1,4 @@
-name: Rust
+name: Linux build wheel and source package
 
 on:
   workflow_dispatch:
