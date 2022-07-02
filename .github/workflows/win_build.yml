@@ -27,6 +27,6 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: linux-wheel
-        path: dist/*.whl
+        path: rust/botframework/dist/*.whl
   
 
