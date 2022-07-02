@@ -1,4 +1,4 @@
-name: Linux build wheel and source package
+name: Linux build package
 
 on:
   workflow_dispatch:

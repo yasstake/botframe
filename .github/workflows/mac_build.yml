@@ -1,4 +1,4 @@
-name: Mac build wheel
+name: Mac build package
 
 on:
   workflow_dispatch:
