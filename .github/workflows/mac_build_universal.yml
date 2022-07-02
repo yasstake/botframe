@@ -1,0 +1,33 @@
+name: Mac build package
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: macos--latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build Wheel
+      run: cd rust/botframework; cargo build --verbose
+    - name: Show Xcode version
+      run: xcodebuild -version
+    - name: Install Rust
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh 
+    - name: Build Package
+      run: |
+        cd rust/botframework; 
+        python -m pip install maturin
+        maturin build  --universal2
+    - name: upload windows-wheels
+      uses: actions/upload-artifact@v3
+      with:
+        name: mac-wheel
+        path: rust/botframework/dist/*
+  
+
