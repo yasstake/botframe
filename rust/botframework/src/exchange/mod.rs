@@ -408,13 +408,37 @@ impl MarketInfo for Market {
     // TODO: error handling calling before data load
     fn start_time(&self) -> i64 {
         let time_s = self.trade_history.column("timestamp").unwrap();
-        return time_s.min().unwrap();
+
+        let mut time: i64 = 0;
+
+        match time_s.min() {
+            Some(t) => {
+                time = t;
+            }
+            _ => {
+
+            }
+        }
+
+        return time;
     }
 
     // TODO: error handling calling before data load
     fn end_time(&self) -> i64 {
         let time_s = self.trade_history.column("timestamp").unwrap();
-        return time_s.max().unwrap();
+
+        let mut time: i64 = 0;
+
+        match time_s.max() {
+            Some(t) => {
+                time = t;
+            }
+            _ => {
+
+            }
+        }
+
+        return time;
     }
 
     fn for_each(

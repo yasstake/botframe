@@ -8,6 +8,9 @@ class Agent:
     def __init__(self, param_K=1.6):
             self.K = param_K                           # パラメターKを設定する。
 
+    #def on_tick(self, time_ms, action, price, size):
+    #    print(time_ms, action, price, size)
+
     def on_clock(self, time_ms: int, session):
         ohlcv_array = session.ohlcv(60*60*2, 6)     # 最新足０番目　＋　５本の足を取得。 最新は６番目。
         ohlcv_df = rbot.array_to_df(ohlcv_array)         # ndarrayをDataFrameへ変換
@@ -58,17 +61,44 @@ class Agent:
             else:
                 pass
 
+    def on_update(self, order):
+        print(order.update_time)
+        print(order.order_id)
+        print(order.order_sub_id)
+        print(order.order_type)
+        print(order.post_only)
+        print(order.status)
+        print(order.open_price)
+        print(order.close_price)
+        print(order.price)
+        print(order.size)
+        print(order.volume)
+        print(order.profit)
+        print(order.fee)
+        print(order.total_profit)
+        print(order.position_change)    
+        print(order.message)
+
+
+
 
 bb = rbot.DummyBb()
-#bb.log_load(100)
+
+print(bb)
+print("CacheDir", bb.log_cache_dir)
+
+bb.log_load(10)
+bb.dump()
 bb.restore()
+
+print(bb)
+print("CacheDir", bb.log_cache_dir)
 
 agent = Agent()
 
 result = bb.run(agent, 60*60*2)
 bb.debug_loop_count = 100
 df = result_to_df(result)
-
 
 print(df)
 
