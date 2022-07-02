@@ -9,27 +9,25 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: macos--latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: debug
-      run: |
-        echo '::echo::on'
-        pwd
-        cd rust/botframework
-        pwd
-        ls
-    - name: Build
+    - name: Build Wheel
       run: cd rust/botframework; cargo build --verbose
+    - name: Show Xcode version
+      run: xcodebuild -version
+    - name: Install Rust
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh 
     - name: Build Package
       run: |
         cd rust/botframework; 
         python -m pip install build
         python -m build .
-    - name: linux-wheels
+    - name: upload windows-wheels
       uses: actions/upload-artifact@v3
       with:
-        name: linux-wheel
-        path: rust/botframework/dist/*
+        name: mac-wheel
+        path: rust/botframework/dist/*.whl
+  
 

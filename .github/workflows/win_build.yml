@@ -1,10 +1,7 @@
 name: Rust
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,7 +23,7 @@ jobs:
     - name: upload windows-wheels
       uses: actions/upload-artifact@v3
       with:
-        name: linux-wheel
+        name: windows-wheel
         path: rust/botframework/dist/*.whl
   
 
