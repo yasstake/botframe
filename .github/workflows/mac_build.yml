@@ -11,6 +11,10 @@ jobs:
 
     runs-on: macos--latest
 
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10"] 
+    steps:
     - uses: actions/checkout@v3
 
     - name: Stable with rustfmt and clippy
@@ -43,6 +47,6 @@ jobs:
     - name: wheels upload
       uses: actions/upload-artifact@v3
       with:
-        name: linux-wheels
+        name: mac-wheels
         path: rust/botframework/target/wheels/*
 
