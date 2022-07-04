@@ -436,7 +436,8 @@ impl DummyBb {
 
     fn __str__(&mut self) -> String {
         return format!(
-            "DummyBB: from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
+            "DummyBB: market_type: {:?}  from:{:?}({:?}) to:{:?}/({:?}) rec_no:{}",
+            self.get_market_type(),
             self.get_log_start_ms().unwrap(),
             PrintTime(self.get_log_start_ms().unwrap()),
             self.get_log_end_ms().unwrap(),
@@ -444,8 +445,6 @@ impl DummyBb {
             self.get_number_of_records(),
         );
     }
-
-
 
     fn dump(&mut self) {
         let file_name = self.dump_file_name();
