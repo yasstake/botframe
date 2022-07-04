@@ -407,9 +407,19 @@ impl DummyBb {
         }
         Ok(())
     }
+
+    fn dump_file_name(&mut self) -> String {
+        let user_dir = log_file_dir().unwrap().clone();
+        let data_dir = user_dir.data_dir();
+        let dump_file = data_dir.join("BBLOG").join(&self.market.get_market_type().to_str()).join("bb_dumpfile.ipc");
+
+        return dump_file.to_str().unwrap().to_string();
+    }
+
 }
 
 use crate::bb::log::log_file_dir;
+use crate::bb::log::MarketType;
 
 #[pymethods]
 impl DummyBb {
@@ -435,20 +445,16 @@ impl DummyBb {
         );
     }
 
-    fn dump(&mut self) {
-        let user_dir = log_file_dir().unwrap().clone();
-        let data_dir = user_dir.data_dir();
-        let dump_file = data_dir.join("bb_dumpfile.ipc");
 
-        self.save(dump_file.to_str().unwrap());
+
+    fn dump(&mut self) {
+        let file_name = self.dump_file_name();
+        self.save(file_name.as_str());
     }
 
     fn restore(&mut self) {
-        let user_dir = log_file_dir().unwrap().clone();
-        let data_dir = user_dir.data_dir();
-        let dump_file = data_dir.join("bb_dumpfile.ipc");
-
-        self.load(dump_file.to_str().unwrap());
+        let file_name = self.dump_file_name();
+        self.load(file_name.as_str());
     }
 
     fn save(&mut self, file_name: &str) {
@@ -476,6 +482,28 @@ impl DummyBb {
     #[getter]
     fn get_log_cache_dir(&self) -> String {
         return log_file_dir().unwrap().data_dir().to_str().unwrap().to_string();
+    }
+
+    #[getter]
+    fn get_market_type(&mut self) -> String {
+        return self.market.get_market_type().to_str().to_string();
+    }
+
+    #[setter]
+    fn set_market_type(&mut self, market_type: &str) {
+        match market_type {
+            "BTCUSD" => {
+                println!("BTCUSD mode");
+                self.market.set_market_type(MarketType::BTCUSD);
+            }
+            "BTCUSDT" => {
+                println!("BTCUSDT mode");                
+                self.market.set_market_type(MarketType::BTCUSDT);
+            }
+            _ => {
+                println! ("unknown type {} / use BTCUSD or BTCUSDT", market_type)
+            }
+        }
     }
 
     /*

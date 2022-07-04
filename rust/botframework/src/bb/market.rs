@@ -13,17 +13,28 @@ use crate::exchange::Trade;
 
 use crate::bb::log::load_log_file;
 
+use crate::bb::log::MarketType;
 
 
 pub struct Bb {
     pub market: Market,
+    market_type: MarketType,
 }
 
 impl Bb {
     pub fn new() -> Bb {
         return Bb {
             market: Market::new(),
+            market_type: MarketType::BTCUSD
         };
+    }
+
+    pub fn set_market_type(&mut self, market_type: MarketType) {
+        self.market_type = market_type;
+    }
+
+    pub fn get_market_type(&mut self) -> MarketType {
+        return self.market_type.clone();
     }
 
     pub async fn download_exec_log(&mut self, yyyy: i32, mm: i32, dd: i32) {
@@ -31,7 +42,7 @@ impl Bb {
             m.append_trade(t);
         }
         // then load log
-        load_log_file(yyyy, mm, dd, insert_callback, &mut self.market).await;
+        load_log_file(&self.market_type, yyyy, mm, dd, insert_callback, &mut self.market).await;
     }
 
     // 過去N日分のログをダウンロードし、Maketクラスへロードする。
@@ -100,6 +111,8 @@ async fn test_download_log_for_five_days() {
     bb.download_exec_log_ndays(5).await;
 }
 
+
+
 #[tokio::test]
 async fn test_download_log() {
     // make instance of market
@@ -109,9 +122,9 @@ async fn test_download_log() {
         m.append_trade(t);
     }
     // then load log
-    load_log_file(2022, 6, 1, insert_callback, &mut market).await;
-    load_log_file(2022, 6, 2, insert_callback, &mut market).await;
-    load_log_file(2022, 6, 3, insert_callback, &mut market).await;
+    load_log_file(&MarketType::BTCUSD, 2022, 6, 1, insert_callback, &mut market).await;
+    load_log_file(&MarketType::BTCUSD, 2022, 6, 2, insert_callback, &mut market).await;
+    load_log_file(&MarketType::BTCUSD, 2022, 6, 3, insert_callback, &mut market).await;
 }
 
 /*

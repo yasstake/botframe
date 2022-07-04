@@ -11,6 +11,34 @@ use std::io::prelude::*;
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
 
+
+#[derive(Clone, Copy)]
+pub enum MarketType {
+    BTCUSD,
+    BTCUSDT
+}
+
+impl MarketType {
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            MarketType::BTCUSD =>{
+                return &"BTCUSD";
+            }
+            MarketType::BTCUSDT => {
+                return &"BTCUSDT";
+            }
+        }
+    }
+
+}
+
+#[test]
+fn test_market_type() {
+    assert_eq!(MarketType::BTCUSD.to_str(), "BTCUSD");
+    assert_eq!(MarketType::BTCUSDT.to_str(), "BTCUSDT");
+}
+
 pub fn log_file_dir() -> Option<ProjectDirs> {
     ProjectDirs::from("net", "takibi", "rusty-exchange")
 }
@@ -19,10 +47,10 @@ pub fn log_file_dir() -> Option<ProjectDirs> {
 // default "~/BBLOG/" will be used.
 // TODO: if environment variable "BB_LOG_DIR" set, that will be used.
 
-pub fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
+pub fn log_file_path(market_type: &MarketType,yyyy: i32, mm: i32, dd: i32) -> String {
     if let Some(base_path) = log_file_dir() {
-        let data_dir = base_path.data_dir().join("BBLOG").join("BTCUSD");
-        let full_path = data_dir.join(bb_log_file_name(yyyy, mm, dd));
+        let data_dir = base_path.data_dir().join("BBLOG").join(market_type.to_str());
+        let full_path = data_dir.join(bb_log_file_name(market_type, yyyy, mm, dd));
 
         fs::create_dir_all(data_dir).unwrap(); // TODO: need error handling?
 
@@ -37,35 +65,35 @@ pub fn log_file_path(yyyy: i32, mm: i32, dd: i32) -> String {
     return "".to_string();
 }
 
-fn log_download_url(yyyy: i32, mm: i32, dd: i32) -> String {
-    let file_name = bb_log_file_name(yyyy, mm, dd);
+fn log_download_url(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> String {
+    let file_name = bb_log_file_name(market_type, yyyy, mm, dd);
 
-    return format!("https://public.bybit.com/trading/BTCUSD/{}", file_name);
+    return format!("https://public.bybit.com/trading/{}/{}", market_type.to_str(), file_name);
 }
 
-fn bb_log_file_name(yyyy: i32, mm: i32, dd: i32) -> String {
-    return format!("BTCUSD{:04}-{:02}-{:02}.csv.gz", yyyy, mm, dd);
+fn bb_log_file_name(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> String {
+    return format!("{}{:04}-{:02}-{:02}.csv.gz", market_type.to_str(), yyyy, mm, dd);
 }
 
 
 // Download log file
 // Download Log file from bybit archive specified date(YYYY, MM, DD)
 //
-async fn download_exec_logfile(yyyy: i32, mm: i32, dd: i32) -> BbResult<()> {
-    let dest_file = log_file_path(yyyy, mm, dd);
+async fn download_exec_logfile(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> BbResult<()> {
+    let dest_file = log_file_path(market_type, yyyy, mm, dd);
     if dest_file == "" {
         panic!("cannot open file");
     }
 
-    let url = log_download_url(yyyy, mm, dd);
+    let url = log_download_url(market_type, yyyy, mm, dd);
 
     fetch_url(url, dest_file).await.unwrap(); // TODO: error handling
 
     return Ok(());
 }
 
-async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
-    let path_name = log_file_path(yyyy, mm, dd);
+async fn open_exec_log_file(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> File {
+    let path_name = log_file_path(market_type, yyyy, mm, dd);
 
     match File::open(&path_name) {
         Ok(f) => {
@@ -76,7 +104,7 @@ async fn open_exec_log_file(yyyy: i32, mm: i32, dd: i32) -> File {
         }
     }
 
-    download_exec_logfile(yyyy, mm, dd).await;
+    download_exec_logfile(market_type, yyyy, mm, dd).await;
     return File::open(&path_name).expect("open error");
 }
 
@@ -120,12 +148,12 @@ async fn fetch_url(url: String, file_name: String) -> BbResult<()> {
 
 #[tokio::test]
 async fn test_download_log_file() -> BbResult<()> {
-    return download_exec_logfile(2022, 06, 01).await;
+    return download_exec_logfile(&MarketType::BTCUSD, 2022, 06, 01).await;
 }
 
 #[tokio::test]
 async fn test_open_exec_log_file() -> BbResult<()> {
-    let f = open_exec_log_file(2022, 5, 3).await;
+    let f = open_exec_log_file(&MarketType::BTCUSD, 2022, 5, 3).await;
 
     return Ok(());
 }
@@ -139,13 +167,14 @@ use crate::exchange::Trade;
 // その後コールバック関数を用いて、Maketクラスへデータをロードする。
 //
 pub async fn load_log_file(
+    market_type: &MarketType,
     yyyy: i32,
     mm: i32,
     dd: i32,
     callback: fn(m: &mut Market, t: &Trade),
     market: &mut Market,
 ) {
-    let f = open_exec_log_file(yyyy, mm, dd).await;
+    let f = open_exec_log_file(market_type, yyyy, mm, dd).await;
 
     let buf_read = std::io::BufReader::new(f);
     let gzip_reader = std::io::BufReader::new(GzDecoder::new(buf_read)).lines();
@@ -215,16 +244,16 @@ pub fn load_dummy_data() -> Market {
 #[test]
 fn test_log_file_path_operations() {
     // assert_eq!(log_file_path(2022, 6, 2), "~/BBLOG/BTCUSD/BTCUSD2022-06-02.csv.gz");
-    println!("log_dir={}", log_file_path(2022, 6, 2));
+    println!("log_dir={}", log_file_path(&MarketType::BTCUSD, 2022, 6, 2));
 
     assert_eq!(
-        log_download_url(2022, 6, 3),
+        log_download_url(&MarketType::BTCUSD, 2022, 6, 3),
         "https://public.bybit.com/trading/BTCUSD/BTCUSD2022-06-03.csv.gz"
     );
-    println!("log url={}", log_download_url(2022, 6, 3));
+    println!("log url={}", log_download_url(&MarketType::BTCUSD, 2022, 6, 3));
 
-    assert_eq!(bb_log_file_name(2022, 6, 2), "BTCUSD2022-06-02.csv.gz");
-    println!("log filename ={}", bb_log_file_name(2022, 6, 2));
+    assert_eq!(bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2), "BTCUSD2022-06-02.csv.gz");
+    println!("log filename ={}", bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2));
 }
 
 #[test]
