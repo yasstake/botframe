@@ -101,6 +101,7 @@ use crate::exchange::ohlcv_from_df_dynamic;
 #[pyclass(module = "rbot")]
 struct DummyBb {
     market: Bb,
+    size_in_btc: bool,
     _sim_start_ms: i64,
     _sim_end_ms: i64,
     _debug_loop_count: i64,
@@ -113,10 +114,10 @@ struct MainSession {
 }
 
 impl MainSession {
-    pub fn from(df: DataFrame) -> Self {
+    pub fn from(size_in_btc: bool, df: DataFrame) -> Self {
         return MainSession {
             df: df,
-            session: SessionValue::new(),
+            session: SessionValue::new(size_in_btc),
         };
     }
 
@@ -428,6 +429,7 @@ impl DummyBb {
     fn new() -> Self {
         return DummyBb {
             market: Bb::new(),
+            size_in_btc: false,
             _sim_start_ms: 0,
             _sim_end_ms: 0,
             _debug_loop_count: 0,
@@ -499,6 +501,7 @@ impl DummyBb {
         }
         
         self.market.set_market_type(market);
+        self.size_in_btc = market.size_in_btc();
     }
 
     //--------------------------------------------------------------------------------------------
@@ -566,7 +569,7 @@ impl DummyBb {
         let mut order_result: Vec<OrderResult> = vec![];
 
         let py_result: PyResult<()> = Python::with_gil(|py| {
-            let mut py_session = MainSession::from(self.market._df());
+            let mut py_session = MainSession::from(self.size_in_btc, self.market._df());
 
             let skip_until = self.get_sim_start_ms();
 
@@ -984,7 +987,7 @@ mod CopySessionTest {
 
     fn make_session() -> CopySession {
         let mut market = Market::new();
-        let main_session = MainSession::from(market._df());
+        let main_session = MainSession::from(false, market._df());
         let copy_session = CopySession::from(&main_session, &market._df(), 1);
 
         return copy_session;
@@ -1114,7 +1117,7 @@ mod CopySessionTest {
         let mut session = make_session();
 
         let order = make_long_order(1, 100.0, 10.0);
-        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder);
+        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder, false);
 
         session
             .positions
@@ -1131,7 +1134,7 @@ mod CopySessionTest {
         let mut session = make_session();
 
         let order = make_short_order(1, 99.0, 9.9);
-        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder);
+        let mut order_result = OrderResult::from_order(1, &order, OrderStatus::InOrder, false);
 
         session
             .positions

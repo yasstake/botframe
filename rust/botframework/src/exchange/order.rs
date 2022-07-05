@@ -84,6 +84,8 @@ impl OrderStatus {
     }
 }
 
+
+// USDTの場合はsizeがBTC建、USDの場合SIZEがUSD建
 #[derive(Debug, Clone)]
 pub struct OrderResult {
     pub update_time: i64,
@@ -96,8 +98,9 @@ pub struct OrderResult {
     pub open_price: f64,
     pub close_price: f64,
     pub price: f64,
-    pub size: f64,   // in usd
-    pub volume: f64, //in BTC
+    pub size_in_btc: bool,
+    pub size: f64,   // in usd　or BTC
+    pub volume: f64, //in BTC or BTC
     pub profit: f64,
     pub fee: f64,
     pub total_profit: f64,
@@ -105,7 +108,7 @@ pub struct OrderResult {
 }
 
 impl OrderResult {
-    pub fn from_order(timestamp: i64, order: &Order, status: OrderStatus) -> Self {
+    pub fn from_order(timestamp: i64, order: &Order, status: OrderStatus, size_in_btc: bool) -> Self {
         return OrderResult {
             update_time: timestamp,
             order_id: order.order_id.clone(),
@@ -117,8 +120,9 @@ impl OrderResult {
             open_price: order.price,
             close_price: 0.0,
             price: order.price,
+            size_in_btc: size_in_btc,
             size: order.size,
-            volume: order.size / order.price,
+            volume: if size_in_btc {order.size * order.price} else {order.size / order.price},
             profit: 0.0,
             fee: 0.0,
             total_profit: 0.0,
@@ -126,8 +130,14 @@ impl OrderResult {
         };
     }
 
+
     fn update_volume_with_open_price(&mut self) {
-        self.volume = self.size / self.open_price; // まだ約定されていないはずなのでOpenPrice採用
+        if self.size_in_btc {
+            self.volume = self.size * self.open_price;
+        }
+        else {
+            self.volume = self.size / self.open_price; // まだ約定されていないはずなのでOpenPrice採用
+        }
     }
 
     /// オーダーを指定された大きさで２つに分ける。
@@ -147,7 +157,6 @@ impl OrderResult {
         child.update_volume_with_open_price();
 
         self.size = size;
-        self.volume = self.size / self.volume;
         self.update_volume_with_open_price();
 
         return Ok(child);
@@ -223,6 +232,7 @@ use pyo3::prelude::pymethods;
 
 #[derive(Debug,Clone)]
 pub struct Orders {
+    size_in_btc: bool,
     buy_queue: bool,
     q: Vec<Order>,
 }
@@ -231,8 +241,9 @@ use std::cmp::Ordering;
 use std::iter::Iterator;
 
 impl Orders {
-    pub fn new(buy_order: bool) -> Self {
+    pub fn new(buy_order: bool, size_in_btc: bool) -> Self {
         return Orders {
+            size_in_btc: size_in_btc,
             buy_queue: buy_order,
             q: vec![],
         };
@@ -325,7 +336,7 @@ impl Orders {
                 let order = self.q.remove(i);
 
                 let close_order =
-                    OrderResult::from_order(current_time_ms, &order, OrderStatus::ExpireOrder);
+                    OrderResult::from_order(current_time_ms, &order, OrderStatus::ExpireOrder, self.size_in_btc);
 
                 // println!("Order expire {:?}", close_order);
 
@@ -405,7 +416,7 @@ impl Orders {
                 let order = &self.q.remove(i);
 
                 let close_order =
-                    OrderResult::from_order(current_time_ms, &order, OrderStatus::OrderComplete);
+                    OrderResult::from_order(current_time_ms, &order, OrderStatus::OrderComplete, self.size_in_btc);
 
                 return Ok(close_order);
             }
@@ -446,7 +457,7 @@ mod ClosedOrderTest {
     use super::*;
 
     #[test]
-    fn test_ClosedOrder() {
+    fn test_ClosedOrder_USD() {
         // 101を51(指定サイズ:Self側）と51（新規）に分割するテスト
         let order = Order::new(
             1,
@@ -460,7 +471,7 @@ mod ClosedOrderTest {
             false,
         );
 
-        let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
+        let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete, false);
         assert_eq!(close_order.size, 101.0);
 
         println!("{:?}", close_order);
@@ -470,11 +481,42 @@ mod ClosedOrderTest {
         println!("{:?}", close_order);
         println!("{:?}", result);
     }
+
+    #[test]
+    // BTC建のテスト
+    fn test_ClosedOrder_BTC() {
+        // 101を51(指定サイズ:Self側）と51（新規）に分割するテスト
+        let order = Order::new(
+            1,
+            "close".to_string(),
+            OrderType::Buy,
+            true,
+            100,
+            100.1,
+            101.0,
+            "".to_string(),
+            false,
+        );
+
+        let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete, true);
+        assert_eq!(close_order.size, 101.0);
+
+        assert_eq!(close_order.volume, 100.1 * 101.0);
+
+        println!("{:?}", close_order);
+        let result = &close_order.split_child(50.0).unwrap();
+        assert_eq!(close_order.size, 50.0);
+        assert_eq!(result.size, 51.0);
+        println!("{:?}", close_order);
+        println!("{:?}", result);
+    }
+
+
 }
 
 #[cfg(test)]
-fn make_orders(buy_order: bool) -> Orders {
-    let mut orders = Orders::new(buy_order);
+fn make_orders(buy_order: bool, size_in_btc: bool) -> Orders {
+    let mut orders = Orders::new(buy_order, size_in_btc);
     assert_eq!(orders.has_q(), false);
 
     let o1 = Order::new(
@@ -543,7 +585,7 @@ mod TestOrders {
 
     #[test]
     fn test_buy_orders() {
-        let mut orders = make_orders(true);
+        let mut orders = make_orders(true, false);
 
         assert_eq!(orders.margin(), 400.0);
 
@@ -578,7 +620,7 @@ mod TestOrders {
 
     #[test]
     fn test_sell_orders() {
-        let mut orders = make_orders(false);
+        let mut orders = make_orders(false, false);
 
         assert_eq!(orders.margin(), 400.0);
 
@@ -649,7 +691,7 @@ mod TestOrders {
 
     #[test]
     fn test_expire_order() {
-        let mut orders = make_orders(true);
+        let mut orders = make_orders(true, false);
 
         // ValidUnitl時刻と同じ場合（または未満）は、Expireしない。
         let r = orders.expire(100);

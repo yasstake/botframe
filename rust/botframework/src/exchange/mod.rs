@@ -258,7 +258,7 @@ pub struct Market {
     // Use DataFrame
     trade_history: DataFrame,
     trade_buffer: TradeBlock,
-    session: SessionValue,
+    // session: SessionValue,
 }
 
 impl Market {
@@ -267,7 +267,7 @@ impl Market {
         return Market {
             trade_history: trade_block.to_data_frame(),
             trade_buffer: TradeBlock::new(),
-            session: SessionValue::new(),
+            // session: SessionValue::new(),
         };
     }
 
@@ -329,9 +329,11 @@ impl Market {
         println!("{}", self.trade_history.tail(Some(5)));
     }
 
+    /*
     pub fn get_session(&mut self) -> &mut SessionValue {
         return &mut self.session;
     }
+    */
 
     fn _set_df(&mut self, df: DataFrame) {
         self.trade_history = df;

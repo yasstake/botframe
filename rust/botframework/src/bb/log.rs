@@ -11,7 +11,6 @@ use std::io::prelude::*;
 pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
 
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum MarketType {
     BTCUSD,
@@ -21,7 +20,7 @@ pub enum MarketType {
     XRPUSD,
     XRPUSDT,
     SOLUSDT,
-    ERROR
+    ERROR,
 }
 
 use std::io::Error;
@@ -29,7 +28,7 @@ use std::io::Error;
 impl MarketType {
     pub fn from_str(symbol: &str) -> MarketType {
         match symbol {
-            "BTCUSD"=> {
+            "BTCUSD" => {
                 return MarketType::BTCUSD;
             }
             "BTCUSDT" => {
@@ -57,10 +56,9 @@ impl MarketType {
         }
     }
 
-
     pub fn to_str(&self) -> &str {
         match self {
-            &MarketType::BTCUSD =>{
+            &MarketType::BTCUSD => {
                 return &"BTCUSD";
             }
             &MarketType::BTCUSDT => {
@@ -87,6 +85,24 @@ impl MarketType {
             }
         }
     }
+
+    pub fn size_in_btc(&self) -> bool {
+        match self {
+            &MarketType::BTCUSD | &MarketType::ETHUSD | &MarketType::XRPUSD => {
+                return false;
+            }
+            &MarketType::BTCUSDT
+            | &MarketType::ETHUSDT
+            | &MarketType::XRPUSDT
+            | &MarketType::SOLUSDT => {
+                return true;
+            }
+            &MarketType::ERROR => {
+                println!("MarketType ERROR");
+                return false;
+            }
+        }
+    }
 }
 
 #[test]
@@ -103,9 +119,12 @@ pub fn log_file_dir() -> Option<ProjectDirs> {
 // default "~/BBLOG/" will be used.
 // TODO: if environment variable "BB_LOG_DIR" set, that will be used.
 
-pub fn log_file_path(market_type: &MarketType,yyyy: i32, mm: i32, dd: i32) -> String {
+pub fn log_file_path(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> String {
     if let Some(base_path) = log_file_dir() {
-        let data_dir = base_path.data_dir().join("BBLOG").join(market_type.to_str());
+        let data_dir = base_path
+            .data_dir()
+            .join("BBLOG")
+            .join(market_type.to_str());
         let full_path = data_dir.join(bb_log_file_name(market_type, yyyy, mm, dd));
 
         fs::create_dir_all(data_dir).unwrap(); // TODO: need error handling?
@@ -124,18 +143,32 @@ pub fn log_file_path(market_type: &MarketType,yyyy: i32, mm: i32, dd: i32) -> St
 fn log_download_url(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> String {
     let file_name = bb_log_file_name(market_type, yyyy, mm, dd);
 
-    return format!("https://public.bybit.com/trading/{}/{}", market_type.to_str(), file_name);
+    return format!(
+        "https://public.bybit.com/trading/{}/{}",
+        market_type.to_str(),
+        file_name
+    );
 }
 
 fn bb_log_file_name(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> String {
-    return format!("{}{:04}-{:02}-{:02}.csv.gz", market_type.to_str(), yyyy, mm, dd);
+    return format!(
+        "{}{:04}-{:02}-{:02}.csv.gz",
+        market_type.to_str(),
+        yyyy,
+        mm,
+        dd
+    );
 }
-
 
 // Download log file
 // Download Log file from bybit archive specified date(YYYY, MM, DD)
 //
-async fn download_exec_logfile(market_type: &MarketType, yyyy: i32, mm: i32, dd: i32) -> BbResult<()> {
+async fn download_exec_logfile(
+    market_type: &MarketType,
+    yyyy: i32,
+    mm: i32,
+    dd: i32,
+) -> BbResult<()> {
     let dest_file = log_file_path(market_type, yyyy, mm, dd);
     if dest_file == "" {
         panic!("cannot open file");
@@ -235,7 +268,6 @@ pub async fn load_log_file(
     let buf_read = std::io::BufReader::new(f);
     let gzip_reader = std::io::BufReader::new(GzDecoder::new(buf_read)).lines();
 
-
     for (i, l) in gzip_reader.enumerate() {
         // first line is a header
         if i == 0 {
@@ -257,8 +289,7 @@ pub async fn load_log_file(
 }
 
 #[cfg(test)]
-use chrono::{Datelike, Utc, Duration};
-
+use chrono::{Datelike, Duration, Utc};
 
 #[cfg(test)]
 use crate::bb::testdata::CSVDATA;
@@ -270,7 +301,6 @@ pub fn load_dummy_data() -> Market {
     }
 
     let mut market = Market::new();
-
 
     let data: String = CSVDATA.to_string();
 
@@ -296,7 +326,6 @@ pub fn load_dummy_data() -> Market {
     return market;
 }
 
-
 #[test]
 fn test_log_file_path_operations() {
     // assert_eq!(log_file_path(2022, 6, 2), "~/BBLOG/BTCUSD/BTCUSD2022-06-02.csv.gz");
@@ -306,23 +335,36 @@ fn test_log_file_path_operations() {
         log_download_url(&MarketType::BTCUSD, 2022, 6, 3),
         "https://public.bybit.com/trading/BTCUSD/BTCUSD2022-06-03.csv.gz"
     );
-    println!("log url={}", log_download_url(&MarketType::BTCUSD, 2022, 6, 3));
+    println!(
+        "log url={}",
+        log_download_url(&MarketType::BTCUSD, 2022, 6, 3)
+    );
 
-    assert_eq!(bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2), "BTCUSD2022-06-02.csv.gz");
-    println!("log filename ={}", bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2));
+    assert_eq!(
+        bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2),
+        "BTCUSD2022-06-02.csv.gz"
+    );
+    println!(
+        "log filename ={}",
+        bb_log_file_name(&MarketType::BTCUSD, 2022, 6, 2)
+    );
 }
 
 #[test]
-fn test_ndays(){
+fn test_ndays() {
     let last_day = Utc::now() - Duration::days(1);
-   
-    println!("{} {}-{}-{}", last_day, 
-        last_day.year(), last_day.month(), last_day.day());
 
+    println!(
+        "{} {}-{}-{}",
+        last_day,
+        last_day.year(),
+        last_day.month(),
+        last_day.day()
+    );
 
     let days = 10;
 
-    for i in (0..days).rev(){
+    for i in (0..days).rev() {
         let log_date = last_day - Duration::days(i);
         let year = log_date.year();
         let month = log_date.month() as i32;
