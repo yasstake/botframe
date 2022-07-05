@@ -97,6 +97,7 @@ impl Position {
 
 #[derive(Debug, Clone)]
 pub struct Positions {
+    pub size_in_btc: bool,          // BTC建の場合true
     pub long_position: Position,
     pub short_position: Position,
 }
@@ -104,6 +105,7 @@ pub struct Positions {
 impl Positions {
     fn new() -> Self {
         return Positions {
+            size_in_btc: false,
             long_position: Position::new(),
             short_position: Position::new(),
         };
@@ -148,7 +150,6 @@ impl Positions {
 
         return long_margin + short_margin;
     }
-
 
     fn update_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
         match self.update_small_position(order) {

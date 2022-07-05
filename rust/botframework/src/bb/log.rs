@@ -19,7 +19,8 @@ pub enum MarketType {
     ETHUSD,
     ETHUSDT,
     XRPUSD,
-    XRPUSDT,    
+    XRPUSDT,
+    SOLUSDT,
     ERROR
 }
 
@@ -46,6 +47,9 @@ impl MarketType {
             "XRPUSDT" => {
                 return MarketType::XRPUSDT;
             }
+            "SOLUSDT" => {
+                return MarketType::SOLUSDT;
+            }
             _ => {
                 println!("unknown type");
                 return MarketType::ERROR;
@@ -68,17 +72,19 @@ impl MarketType {
             &MarketType::ETHUSDT => {
                 return &"ETHUSDT";
             }
-            &MarketType::ERROR => {
-                println!("MarketType ERROR");
-                return &"ERROR";
-            }
             &MarketType::XRPUSD => {
                 return &"XRPUSD";
             }
             &MarketType::XRPUSDT => {
                 return &"XRPUSDT";
             }
-
+            &MarketType::SOLUSDT => {
+                return &"SOLUSDT";
+            }
+            &MarketType::ERROR => {
+                println!("MarketType ERROR");
+                return &"ERROR";
+            }
         }
     }
 }

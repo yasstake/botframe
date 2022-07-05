@@ -69,3 +69,6 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+# pkl
+*.pkl
