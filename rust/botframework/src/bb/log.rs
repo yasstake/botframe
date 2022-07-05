@@ -12,25 +12,75 @@ pub type BbError = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type BbResult<T> = Result<T, BbError>;
 
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum MarketType {
     BTCUSD,
-    BTCUSDT
+    BTCUSDT,
+    ETHUSD,
+    ETHUSDT,
+    XRPUSD,
+    XRPUSDT,    
+    ERROR
 }
 
-impl MarketType {
+use std::io::Error;
 
-    pub fn to_str(&self) -> &str {
-        match self {
-            MarketType::BTCUSD =>{
-                return &"BTCUSD";
+impl MarketType {
+    pub fn from_str(symbol: &str) -> MarketType {
+        match symbol {
+            "BTCUSD"=> {
+                return MarketType::BTCUSD;
             }
-            MarketType::BTCUSDT => {
-                return &"BTCUSDT";
+            "BTCUSDT" => {
+                return MarketType::BTCUSDT;
+            }
+            "ETHUSD" => {
+                return MarketType::ETHUSD;
+            }
+            "ETHUSDT" => {
+                return MarketType::ETHUSDT;
+            }
+            "XRPUSD" => {
+                return MarketType::XRPUSD;
+            }
+            "XRPUSDT" => {
+                return MarketType::XRPUSDT;
+            }
+            _ => {
+                println!("unknown type");
+                return MarketType::ERROR;
             }
         }
     }
 
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            &MarketType::BTCUSD =>{
+                return &"BTCUSD";
+            }
+            &MarketType::BTCUSDT => {
+                return &"BTCUSDT";
+            }
+            &MarketType::ETHUSD => {
+                return &"ETHUSD";
+            }
+            &MarketType::ETHUSDT => {
+                return &"ETHUSDT";
+            }
+            &MarketType::ERROR => {
+                println!("MarketType ERROR");
+                return &"ERROR";
+            }
+            &MarketType::XRPUSD => {
+                return &"XRPUSD";
+            }
+            &MarketType::XRPUSDT => {
+                return &"XRPUSDT";
+            }
+
+        }
+    }
 }
 
 #[test]

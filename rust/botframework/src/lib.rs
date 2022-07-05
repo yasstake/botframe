@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use bb::market;
 use exchange::ohlcv_df_from_ohlc;
 use exchange::round_down_tick;
 use exchange::MarketInfo;
@@ -490,26 +491,15 @@ impl DummyBb {
 
     #[setter]
     fn set_market_type(&mut self, market_type: &str) {
-        match market_type {
-            "BTCUSD" => {
-                println!("BTCUSD mode");
-                self.market.set_market_type(MarketType::BTCUSD);
-            }
-            "BTCUSDT" => {
-                println!("BTCUSDT mode");                
-                self.market.set_market_type(MarketType::BTCUSDT);
-            }
-            _ => {
-                println! ("unknown type {} / use BTCUSD or BTCUSDT", market_type)
-            }
-        }
-    }
+        let market = MarketType::from_str(market_type);
 
-    /*
-    fn save(&self, path: String) {
-        //self.market._df().write_ipc
+        if market == MarketType::ERROR {
+            println! ("unknown type {} / use BTCUSD / BTCUSDT / ETHUSD / ETHUSDT", market_type);
+            return;
+        }
+        
+        self.market.set_market_type(market);
     }
-    */
 
     //--------------------------------------------------------------------------------------------
     // Market (Session) API
