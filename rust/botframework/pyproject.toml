@@ -15,5 +15,5 @@ dependencies = [
   "numpy",
   "pandas",
   "matplotlib",
-  "mplfinance"
+  "mplfinance",
 ]

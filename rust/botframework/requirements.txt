@@ -1,0 +1,11 @@
+
+#== for ml_g_research.ipynb
+scipy 
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+lightgbm
+datetime
+tqdm
