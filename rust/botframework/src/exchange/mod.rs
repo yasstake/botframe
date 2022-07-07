@@ -121,6 +121,7 @@ pub fn ohlcv_df_from_raw(
     return ohlcv_from_df_dynamic(&df, start_time_ms, current_time_ms, width_sec, false);
 }
 
+
 use crate::pyutil::PrintTime;
 
 pub fn ohlcv_df_from_ohlc(
@@ -150,6 +151,8 @@ use polars::prelude::DynamicGroupOptions;
 
 use polars::prelude::ClosedWindow;
 use polars::prelude::Duration;
+
+use crate::exchange::order::OrderType;
 
 pub fn ohlcv_from_df_dynamic(
     df: &DataFrame,
@@ -233,6 +236,27 @@ fn ohlcv_from_ohlcv_dynamic(
         .collect()
         .unwrap();
 }
+
+fn bs_str_to_num(str_val: &Series) -> Series {
+    str_val.utf8()
+        .unwrap()
+        .into_iter()
+        .map(|opt_bs: Option<&str>| {
+            opt_bs.map(|bs: &str| OrderType::from_str(bs).to_num())
+         })
+        .collect::<Int64Chunked>()
+        .into_series()
+}
+
+/// get raw log (time, side, size, price, id)
+pub fn get_raw_log(df: &DataFrame, start_time_ms: i64, end_time_ms: i64) -> DataFrame {
+    let mut df = select_df(df, start_time_ms, end_time_ms);
+
+    df.apply("bs", bs_str_to_num).unwrap();
+
+    return df;
+}
+
 
 pub trait MaketAgent {
     fn on_event(&self, kind: &str, time: i64, price: f32, size: f32);
@@ -473,9 +497,6 @@ impl MarketInfo for Market {
 ////////////////////////////////////////////////////////////////////////////////
 ///    TEST SECION
 ////////////////////////////////////////////////////////////////////////////////
-
-#[cfg(test)]
-use order::OrderType;
 
 #[test]
 fn test_history_size_and_dupe_load() {
@@ -848,4 +869,15 @@ fn test_write_and_read_df() {
     let df2 = IpcReader::new(file).finish().unwrap();
 
     println!("{:?}", df2);
+}
+
+#[test]
+fn test_get_raw_log() {
+    let mut m = load_dummy_data();
+
+    let df = m._df();
+
+    let df = get_raw_log(&df, 0,0);
+
+    println!("{:?}", df);
 }

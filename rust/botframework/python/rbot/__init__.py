@@ -12,6 +12,25 @@ def array_to_df(array):
 
     return ohlcv_df
 
+def rawlog_to_df(array):
+    df = pd.DataFrame(
+        array, columns=["timestamp", "action", "price", "size"])
+    df['timestamp'] = pd.to_datetime(
+        (df["timestamp"]), utc=True, unit='ms')
+    df = df.set_index('timestamp')
+
+    def bs_decode(bs):
+        if bs == 1:
+            return "Buy"
+        elif bs == 2:
+            return "Sell"
+        else:
+            return "ERROR"
+
+    df['action'] = df['action'].map(bs_decode)    
+
+    return df
+
 
 def result_to_df(result_list):
     update_time = []

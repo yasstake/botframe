@@ -97,6 +97,7 @@ use crate::exchange::session::SessionValue;
 use pyo3::types::PyList;
 
 use crate::exchange::ohlcv_from_df_dynamic;
+use crate::exchange::get_raw_log;
 
 #[pyclass(module = "rbot")]
 struct DummyBb {
@@ -711,37 +712,32 @@ impl DummyBb {
             .to_ndarray::<Float64Type>()
             .unwrap();
 
-        let gil = pyo3::Python::acquire_gil();
-        let py = gil.python();
-
-        let py_array2: &PyArray2<f64> = array.into_pyarray(py);
-
-        return py_array2.to_owned();
-    }
-
-    /*
-    #[getter]
-    fn get_transactions(&self) -> PyResult<PyObject> {
-        let gil = pyo3::Python::acquire_gil();
-        let py = gil.python();
-
-        let list = PyList::empty(py);
-
-        for item in &self.order_history {
-            let result = PyOrderResult::from(item);
-            let py_result = Py::new(py, result)?;
-            let obj = py_result.to_object(py);
-
-            list.append(obj)?;
+            let gil = pyo3::Python::acquire_gil();
+            let py = gil.python();
+    
+            let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+    
+            return py_array2.to_owned();
         }
 
-        return Ok(list.to_object(py));
-    }
+    
+    fn raw_log(&mut self, start_time_ms:i64, end_time_ms: i64) -> Py<PyArray2<f64>> {
+        let df = self.market._df();
 
-    fn reset_transaction(&mut self) {
-        &self.order_history.clear();
+        let df = get_raw_log(&df, start_time_ms, end_time_ms);
+        let array: ndarray::Array2<f64> = df
+            .select(&["timestamp", "bs", "price", "size"])
+            .unwrap()
+            .to_ndarray::<Float64Type>()
+            .unwrap();
+
+            let gil = pyo3::Python::acquire_gil();
+            let py = gil.python();
+    
+            let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+    
+            return py_array2.to_owned();
     }
-    */
 
     #[getter]
     fn get_log_start_ms(&self) -> PyResult<i64> {

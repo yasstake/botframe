@@ -2,9 +2,9 @@
 #[pyclass]
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum OrderType {
-    Buy,
-    Sell,
-    Unknown,
+    Buy,                // 1 
+    Sell,               // 2
+    Unknown,            // 0
 }
 
 impl OrderType {
@@ -22,7 +22,22 @@ impl OrderType {
             }
         }
     }
+
+    pub fn to_num(&self) -> i64 {
+        match self {
+            OrderType::Buy => {
+                return 1;
+            }
+            OrderType::Sell => {
+                return 2;
+            }
+            OrderType::Unknown => {
+                return 0;
+            }
+        }
+    }
 }
+
 
 #[pymethods]
 impl OrderType {
