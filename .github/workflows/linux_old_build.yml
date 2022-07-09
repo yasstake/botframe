@@ -1,0 +1,52 @@
+name: Linux build package
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-18.04
+
+    strategy:
+      matrix:
+        python-version: ["3.9"] 
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Stable with rustfmt and clippy
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        components: rustfmt, clippy
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}    
+
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build Package
+      run: |
+        cd rust/botframework; 
+        python -m pip install --upgrade pip
+        python -m pip install maturin 
+        maturin build  --release --universal2
+
+    - name: wheels upload
+      uses: actions/upload-artifact@v3
+      with:
+        name: linux-wheels
+        path: rust/botframework/target/wheels/*
+
