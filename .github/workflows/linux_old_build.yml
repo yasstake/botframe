@@ -1,4 +1,4 @@
-name: Linux build package
+name: Linux build package for Ubuntu 18.04
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.9"] 
+        python-version: ["3.7", "3.8, "3.9", "3.10"] 
     steps:
     - uses: actions/checkout@v3
 
