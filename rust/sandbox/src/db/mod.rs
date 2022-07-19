@@ -1,5 +1,6 @@
-use rusqlite::{Connection, Result, Statement, Transaction};
+use rusqlite::{Connection, Result, Statement, Transaction, Params};
 
+pub mod exec;
 
 #[derive(Debug)]
 struct Person {
@@ -79,7 +80,11 @@ impl<'conn> PreparedStatement<'conn> {
             statement: conn.prepare(sql).unwrap(),
         }
     }
-
+/*
+    fn execute(&self, params: &Params) {
+        self.statement.execute(params);
+    }
+  */      
     fn query_some_info(&mut self, arg: i64) -> i64 {
         let mut result_iter = self.statement.query(&[&arg]).unwrap();
         let result: i64= result_iter.next().unwrap().unwrap().get(0).unwrap();
@@ -90,12 +95,16 @@ impl<'conn> PreparedStatement<'conn> {
 
 
 pub fn main_2() {
-    let app = MyAppState::new();
-    let mut prepared_stmt = PreparedStatement::new(&app.db, "SELECT ? + 1");
+    let mut db = Connection::open(":memory:").unwrap();    
+    let tx = db.transaction().unwrap();
+    
+    let mut prepared_stmt = PreparedStatement::new(&tx, "SELECT ? + 1");
     for i in 0..100 {
         let result = prepared_stmt.query_some_info(i);
         println!("{}", result);
     }
+
+    // tx.commit();
 }
 
 

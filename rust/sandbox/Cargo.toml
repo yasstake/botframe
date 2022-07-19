@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.16.3", features = ["extension-module", "auto-initialize"] }
 rusqlite="0.28.0"
+directories= "4.0.1"
 
 
 [package.metadata.maturin]
