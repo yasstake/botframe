@@ -9,3 +9,6 @@ rust/botframework/TEST/interface_test
 rust/botframework/.ipynb_checkpoints/*
 rust/botframework/TEST/python/.ipynb_checkpoints/*
 
+rust/sandbox/Cargo.lock
+rust/botframework/.RData
+rust/botframework/.Rhistory

@@ -1,0 +1,19 @@
+[package]
+name = "sandbox"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "sandbox"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.16.3", features = ["extension-module", "auto-initialize"] }
+rusqlite="0.28.0"
+
+
+[package.metadata.maturin]
+python-source = "python"
+
+
