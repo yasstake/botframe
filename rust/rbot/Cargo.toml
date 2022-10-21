@@ -1,0 +1,28 @@
+[package]
+name = "rbot"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "rbot"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.17.1"}
+# to-str = {version = "*"}
+chrono = {version= "*"}
+
+strum_macros = {version  = "0.24"}
+strum = { version = "0.24", features = ["derive"] }
+
+tokio = { version = "1", features = ["full"] }
+
+rusqlite = {version = "0.28.0"}
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+
+
+
+
