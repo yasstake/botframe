@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 pub mod common;
 pub mod sim;
 mod db;
+mod exchange;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]

@@ -20,6 +20,12 @@ tokio = { version = "1", features = ["full"] }
 
 rusqlite = {version = "0.28.0"}
 
+reqwest = {version = "0.11.12"}
+
+serde = {version="1.0"}
+serde_json = {version = "1.0"}
+serde_derive = {version = "1.0"}
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 

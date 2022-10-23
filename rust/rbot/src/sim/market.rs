@@ -1,4 +1,4 @@
-use crate::common::{time::NanoSec, order::OrderSide, order::Order, order::OrderStatus, order::OrderResult};
+use crate::common::{time::MicroSec, order::OrderSide, order::Order, order::OrderStatus, order::OrderResult};
 
 use std::cmp::Ordering;
 use std::iter::Iterator;
@@ -101,7 +101,7 @@ impl OrderQueue {
 
     ///　全件なめる処理になるので数秒ごとに１回でOKとする。
     /// 先頭の１つしかExpireしないが、何回も呼ばれるのでOKとする（多少の誤差を許容）
-    pub fn expire(&mut self, current_time: NanoSec) -> Result<OrderResult, OrderStatus> {
+    pub fn expire(&mut self, current_time: MicroSec) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
         if l == 0 {
@@ -131,7 +131,7 @@ impl OrderQueue {
     /// 超巨大オーダがきた場合でも複数約定はさせず、次回に回す。
     pub fn execute(
         &mut self,
-        current_time: NanoSec,
+        current_time: MicroSec,
         price: f64,
         size: f64,
     ) -> Result<OrderResult, OrderStatus> {
@@ -184,7 +184,7 @@ impl OrderQueue {
     }
 
     ///　全額処理されたオーダをキューから取り出し ClosedOrderオブジェクトを作る。
-    fn pop_close_order(&mut self, current_time: NanoSec) -> Result<OrderResult, OrderStatus> {
+    fn pop_close_order(&mut self, current_time: MicroSec) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
         for i in 0..l {

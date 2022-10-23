@@ -1,4 +1,4 @@
-use super::time::NanoSec;
+use super::time::MicroSec;
 use pyo3::pyclass;
 
 use strum_macros::Display;
@@ -48,7 +48,7 @@ impl OrderSide {
 #[pyclass]
 #[derive(Debug)]
 pub struct Trade {
-    pub time_ns: NanoSec,
+    pub time: MicroSec,
     pub price: f64,
     pub size: f64,
     pub bs: OrderSide,
@@ -57,9 +57,9 @@ pub struct Trade {
 }
 
 impl Trade {
-    pub fn new(time_ns: NanoSec, price: f64, size: f64, bs: OrderSide, liquid: bool, id: String) -> Self{
+    pub fn new(time_microsec: MicroSec, price: f64, size: f64, bs: OrderSide, liquid: bool, id: String) -> Self{
         return Trade {
-            time_ns,
+            time: time_microsec,
             price,
             size,
             bs,
@@ -73,11 +73,11 @@ impl Trade {
 #[derive(Debug, Clone)]
 pub struct Order {
     _order_index: i64,
-    pub create_time: NanoSec, // in ns
+    pub create_time: MicroSec, // in ns
     pub order_id: String,     // YYYY-MM-DD-SEQ
     pub order_side: OrderSide,
     pub post_only: bool,
-    pub valid_until: NanoSec, // in ns
+    pub valid_until: MicroSec, // in ns
     pub price: f64,           // in
     pub size: f64,            // in forein
     pub message: String,
@@ -86,11 +86,11 @@ pub struct Order {
 
 impl Order {
     pub fn new(
-        create_time: NanoSec, // in ns
+        create_time: MicroSec, // in ns
         order_id: String,     // YYYY-MM-DD-SEQ
         order_side: OrderSide,
         post_only: bool,
-        valid_until: NanoSec, // in ns
+        valid_until: MicroSec, // in ns
         price: f64,
         size: f64,            // in forreign currency.
         message: String,
@@ -146,12 +146,12 @@ impl OrderStatus {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct OrderResult {
-    pub update_time: NanoSec,
+    pub update_time: MicroSec,
     pub order_id: String,
     pub order_sub_id: i32, // 分割された場合に利用
     pub order_side: OrderSide,
     pub post_only: bool,
-    pub create_time: NanoSec,
+    pub create_time: MicroSec,
     pub status: OrderStatus,
     pub open_price: f64,
     pub close_price: f64,
@@ -166,7 +166,7 @@ pub struct OrderResult {
 
 impl OrderResult {
     pub fn from_order(
-        timestamp: NanoSec,
+        timestamp: MicroSec,
         order: &Order,
         status: OrderStatus,
     ) -> Self {
@@ -288,7 +288,7 @@ mod order_result_test {
 
         let order = Order::new(create_time, order_id.clone(), order_side, post_only, valid_until, price, size, message.clone());
 
-        let current_time: NanoSec = 100;
+        let current_time: MicroSec = 100;
         let order_result = OrderResult::from_order(current_time, &order, OrderStatus::OpenPosition);
 
         assert_eq!(order_result.update_time, current_time);

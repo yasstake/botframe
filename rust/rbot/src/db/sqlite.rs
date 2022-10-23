@@ -1,7 +1,7 @@
 
 use rusqlite::{params, Connection, Result, Statement, Transaction, Params, Error, MappedRows, Row, params_from_iter};
 use crate::common::order::Trade;
-use crate::common::time::NanoSec;
+use crate::common::time::MicroSec;
 use crate::OrderSide;
 
 struct TradeTable {
@@ -69,7 +69,7 @@ impl TradeTable {
         for rec in trades {
             println!("{:?}", rec);
             let _size = statement.execute(params![
-                rec.time_ns,
+                rec.time,
                 rec.bs.to_string(),
                 rec.price,
                 rec.size,
@@ -82,7 +82,7 @@ impl TradeTable {
     //
     // 時間選択は左側は含み、右側は含まない。
     // 0をいれたときは全件検索
-    pub fn select_time(&mut self, from_time: NanoSec, to_time: NanoSec) {
+    pub fn select_time(&mut self, from_time: MicroSec, to_time: MicroSec) {
         let mut sql = "";
         let mut param= vec![];
 
@@ -103,7 +103,7 @@ impl TradeTable {
             let bs = OrderSide::from_str(bs_str.as_str());
 
             Ok(Trade {
-                time_ns: row.get_unwrap(0),
+                time: row.get_unwrap(0),
                 price: row.get_unwrap(2),
                 size: row.get_unwrap(3),
                 bs: bs,
@@ -125,6 +125,7 @@ mod test_transaction_table {
     use std::sync::mpsc;
     use std::sync::mpsc::{Receiver, Sender};
     use std::thread;
+    use chrono::Duration;
     use super::*;
 
     #[test]
@@ -180,6 +181,29 @@ mod test_transaction_table {
         for recv_rec in rx {
             println!(">{:?}", recv_rec);
         }
+
+        handle.join().unwrap();
+    }
+
+
+    #[test]
+    fn test_send_channel_02() {
+        let (tx, rx): (Sender<Trade>, Receiver<Trade>) = mpsc::channel();
+
+        let handle = thread::spawn(move || {
+            for recv_rec in rx {
+                println!(">{:?}", recv_rec);
+            }
+        });
+
+        for i in 0..100 {
+            let trade = Trade::new(i, 10.0, 10.0, OrderSide::Buy, false, "abc1".to_string());
+            println!("<{:?}", trade);
+            tx.send(trade);
+        }
+
+        // handle.join().unwrap();　// 送信側がスレッドだとjoinがうまくいかない。
+        thread::sleep(std::time::Duration::from_secs(5));
     }
 }
 
