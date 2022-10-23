@@ -155,6 +155,8 @@ mod test_transaction_table {
 
     #[test]
     fn test_select_table() {
+        test_insert_table();
+
         let mut table = TradeTable::open("test.db").unwrap();
         println!("0-0");
         table.select_time(0, 0);

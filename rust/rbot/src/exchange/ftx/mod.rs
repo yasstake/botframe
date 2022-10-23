@@ -8,7 +8,7 @@ const FTX_API_ENDPOINT: &str = "https:://ftx.com/api/";
 
 
 // TODO: マーケット種別に対応
-fn download_trade(from_microsec: MicroSec, to_microsec: MicroSec ) -> Vec<FtxTrade> {
+async fn download_trade(from_microsec: MicroSec, to_microsec: MicroSec ) -> Vec<FtxTrade> {
     let from_sec = to_seconds(from_microsec) as i64;
     let to_sec = to_seconds(to_microsec) as i64;
 

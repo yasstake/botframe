@@ -1,7 +1,7 @@
 
 
 
-use chrono::{DateTime, NaiveDateTime};
+use chrono::{Utc, DateTime, NaiveDateTime};
 use pyo3::prelude::*;
 
 // Timestamp scale for system wide.(Nano Sec is default)
@@ -42,7 +42,7 @@ pub fn HHMM(hh:i64, mm: i64) -> MicroSec {
 
 #[pyfunction]
 pub fn NOW() -> MicroSec {
-    return chrono::now().timstamp_micros();
+    return Utc::now().timestamp_micros();
 }
 
 #[cfg(test)]
