@@ -12,12 +12,16 @@ use polars::prelude::SortOptions;
 pub mod order;
 pub mod session;
 
+
+
+
 #[derive(Debug)]
 pub struct Trade {
     pub time_ns: i64,
     pub price: f64,
     pub size: f64,
     pub bs: String, // 本来はOrderTypeで実装するべきだが、Porlarsへいれるため汎用形のStringを採用。
+    pub liquid: bool,
     pub id: String,
 }
 
@@ -508,6 +512,7 @@ fn test_history_size_and_dupe_load() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,
             id: "asdfasf".to_string(),
         };
 
@@ -526,6 +531,7 @@ fn test_history_size_and_dupe_load() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -553,6 +559,7 @@ fn test_add_trad_and_flush() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -571,6 +578,7 @@ fn test_make_history() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -603,6 +611,7 @@ fn test_df_select() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -715,6 +724,7 @@ fn test_add_trade() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -734,6 +744,7 @@ fn test_to_data_frame() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 
@@ -759,6 +770,7 @@ fn test_df_loop() {
             price: 1.0,
             size: 1.1,
             bs: OrderType::Buy.to_str().to_string(),
+            liquid: false,            
             id: "asdfasf".to_string(),
         };
 

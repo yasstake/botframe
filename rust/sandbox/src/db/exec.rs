@@ -51,6 +51,13 @@ impl ExecuteTable {
         );
     }
 
+    fn drop_table(&self) -> Result<usize, rusqlite::Error> {
+        return self.connection.execute(
+            "DROP TABLE exec", 
+            ()
+        );
+    }
+
     fn transanction(&mut self) -> Transaction {
         return self.connection.transaction().unwrap();
     }

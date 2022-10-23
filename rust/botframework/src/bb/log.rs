@@ -25,6 +25,7 @@ pub enum MarketType {
 
 use std::io::Error;
 
+
 impl MarketType {
     pub fn from_str(symbol: &str) -> MarketType {
         match symbol {
@@ -104,6 +105,8 @@ impl MarketType {
         }
     }
 }
+
+
 
 #[test]
 fn test_market_type() {

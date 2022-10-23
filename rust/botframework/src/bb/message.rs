@@ -130,6 +130,7 @@ pub fn parse_log_rec(rec: &str) -> anyhow::Result<Trade> {
         price: price,
         size: size,
         bs: bs,
+        liquid: false,
         id: id,
     });
 }
