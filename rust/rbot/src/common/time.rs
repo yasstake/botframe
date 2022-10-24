@@ -25,7 +25,6 @@ pub fn time_string(t: MicroSec) -> String {
 #[pyfunction]
 pub fn parse_time(t: &str) -> MicroSec {
     let datetime = DateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S%.6f%z");
-    println!("{:?}", datetime);
 
     return datetime.unwrap().timestamp_micros();
 }
@@ -40,6 +39,11 @@ pub fn HHMM(hh:i64, mm: i64) -> MicroSec {
     return   (( (hh * 60 * 60) + (mm * 60)) * 1_000_000) as MicroSec;
 }
 
+///
+/// 現在時刻を返す(Microsec)
+/// ```
+/// println!("{:?}", NOW());
+/// ```
 #[pyfunction]
 pub fn NOW() -> MicroSec {
     return Utc::now().timestamp_micros();
@@ -69,5 +73,11 @@ mod time_test {
     fn test_days() {
         assert_eq!(DAYS(1), parse_time("1970-01-02T00:00:00.000000+00:00"));
         assert_eq!(HHMM(1, 1), parse_time("1970-01-01T01:01:00.000000+00:00"));
+    }
+
+    #[test]
+    fn test_print_now() {
+        let now = NOW();
+        println!("{:?} {:?}", now, time_string(now));
     }
 }

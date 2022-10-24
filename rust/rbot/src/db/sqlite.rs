@@ -70,7 +70,7 @@ impl TradeTable {
             println!("{:?}", rec);
             let _size = statement.execute(params![
                 rec.time,
-                rec.bs.to_string(),
+                rec.order_side.to_string(),
                 rec.price,
                 rec.size,
                 rec.liquid,
@@ -106,7 +106,7 @@ impl TradeTable {
                 time: row.get_unwrap(0),
                 price: row.get_unwrap(2),
                 size: row.get_unwrap(3),
-                bs: bs,
+                order_side: bs,
                 liquid: row.get_unwrap(4),
                 id: row.get_unwrap(5)
             })

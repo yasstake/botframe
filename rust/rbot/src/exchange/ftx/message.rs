@@ -9,29 +9,45 @@ use serde_derive::{Deserialize, Serialize};
 use crate::common::order::Trade;
 use crate::OrderSide;
 
+use log::Log;
+use simple_logger::SimpleLogger;
+use crate::common::time::parse_time;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FtxTradeMessage {
-    success: bool,
+    pub success: bool,
     pub(crate) result: Vec<FtxTrade>
+}
+
+impl FtxTradeMessage {
+    pub fn get_trades(&mut self) -> Vec<Trade>{
+        let mut trade: Vec<Trade> = vec![];
+
+        for t in &self.result {
+            trade.push(t.to_trade());
+        }
+
+        trade
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FtxTrade {
-    id: i64,   // "id":5196537114
-    price: f64,   // "price":19226.0
-    size: f64,    // "size":0.0147
-    side: String, // "side":"sell"
-    liquidation: bool, // "liquidation":false
-    time: String       // "time":"2022-10-22T14:22:43.407735+00:00"
+    pub id: i64,   // "id":5196537114
+    pub price: f64,   // "price":19226.0
+    pub size: f64,    // "size":0.0147
+    pub side: String, // "side":"sell"
+    pub liquidation: bool, // "liquidation":false
+    pub time: String       // "time":"2022-10-22T14:22:43.407735+00:00"
 }
 
 impl FtxTrade {
     pub fn to_trade(&self) -> Trade {
         return Trade {
-            time: 0,
+            time: parse_time(self.time.as_str()),
             price: self.price,
             size: self.size,
-            bs: OrderSide::from_str(&self.side),
+            order_side: OrderSide::from_str(&self.side),
             liquid: self.liquidation,
             id: self.id.to_string()
         }
@@ -40,6 +56,7 @@ impl FtxTrade {
 
 #[cfg(test)]
 mod test_ftx_message {
+    use simple_logger::SimpleLogger;
     use crate::common::time::parse_time;
     use crate::exchange::ftx::message::FtxTradeMessage;
 
@@ -62,6 +79,21 @@ mod test_ftx_message {
         assert_eq!(message.success, true);
         assert_eq!(message.result.len(), 3);
         println!("{:?}", parse_time(message.result[0].time.as_str() ));
+    }
+
+    #[test]
+    fn test_ftx_trade_message_to_trade () {
+        let mut message: FtxTradeMessage = serde_json::from_str(MESSAGE).unwrap();
+
+        let trades = message.get_trades();
+        println!("{:?}", trades);
+    }
+
+    #[test]
+    fn test_debug_message() {
+        SimpleLogger::new().env().init().unwrap();
+
+        log::debug!("{}", "hello world");
     }
 
 }

@@ -51,18 +51,18 @@ pub struct Trade {
     pub time: MicroSec,
     pub price: f64,
     pub size: f64,
-    pub bs: OrderSide,
+    pub order_side: OrderSide,
     pub liquid: bool,
     pub id: String,
 }
 
 impl Trade {
-    pub fn new(time_microsec: MicroSec, price: f64, size: f64, bs: OrderSide, liquid: bool, id: String) -> Self{
+    pub fn new(time_microsec: MicroSec, price: f64, size: f64, order_side: OrderSide, liquid: bool, id: String) -> Self{
         return Trade {
             time: time_microsec,
             price,
             size,
-            bs,
+            order_side,
             liquid,
             id
         }
