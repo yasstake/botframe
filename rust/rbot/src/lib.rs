@@ -11,6 +11,7 @@ pub mod common;
 pub mod sim;
 mod db;
 mod exchange;
+mod fs;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]

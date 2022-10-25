@@ -1,4 +1,4 @@
-mod sqlite;
+pub mod sqlite;
 
 /*
 use crate::common::time::NanoSec;
