@@ -307,7 +307,7 @@ impl TradeTable {
     }
     */
 
-    pub fn insert_records(&mut self, trades: Vec<Trade>) {
+    pub fn insert_records(&mut self, trades: &Vec<Trade>) {
         let mut statement = self.connection.prepare(
             r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
                      values (?1, ?2, ?3, ?4, ?5, ?6)
@@ -315,7 +315,6 @@ impl TradeTable {
         ).unwrap();
 
         for rec in trades {
-            println!("{:?}", rec);
             let _size = statement.execute(params![
                 rec.time,
                 rec.order_side.to_string(),
@@ -328,7 +327,9 @@ impl TradeTable {
     }
 }
 
-
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///   Test Suite
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 #[cfg(test)]
@@ -363,7 +364,7 @@ mod test_transaction_table {
         let rec2 = Trade::new(2, 10.1, 10.2, OrderSide::Buy, false, "abc2".to_string());
         let rec3 = Trade::new(3, 10.2, 10.1, OrderSide::Buy, false, "abc3".to_string());
 
-        &tr.insert_records(vec![rec1, rec2, rec3]);
+        &tr.insert_records(&vec![rec1, rec2, rec3]);
     }
 
     #[test]

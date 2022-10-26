@@ -12,3 +12,4 @@ rust/botframework/TEST/python/.ipynb_checkpoints/*
 rust/sandbox/Cargo.lock
 rust/botframework/.RData
 rust/botframework/.Rhistory
+rust/rbot/test.db
