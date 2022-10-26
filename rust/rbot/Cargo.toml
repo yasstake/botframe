@@ -29,6 +29,7 @@ serde_derive = {version = "1.0"}
 log = {version = "0.4"}
 simple_logger = {version = "3.0"}
 
+directories= "4.0.1"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
