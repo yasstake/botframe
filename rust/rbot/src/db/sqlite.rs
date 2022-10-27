@@ -3,10 +3,13 @@
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
+use polars::prelude::DataFrame;
 use rusqlite::{params, Connection, Result, Error, params_from_iter};
 use crate::common::order::Trade;
 use crate::common::time::{MicroSec, FLOOR, to_seconds, NOW, time_string};
 use crate::OrderSide;
+
+use super::df::OhlcvBuffer;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ohlcvv {
@@ -246,7 +249,7 @@ impl TradeTable {
         let mut chunk = Ohlcvv::new();
 
         self.select(from_time, to_time, |trade: &Trade| {
-            let trade_chunk_time = to_seconds(FLOOR(trade.time, windows_sec));
+            let trade_chunk_time = FLOOR(trade.time, windows_sec) as f64;
             if chunk.time == 0.0 {
                 chunk.time = trade_chunk_time;
             } else if chunk.time != trade_chunk_time {
@@ -263,6 +266,17 @@ impl TradeTable {
 
         return ohlcvv;
     }
+
+    pub fn select_ohclv_df(&mut self, from_time: MicroSec, to_time: MicroSec, windows_sec: i64) -> DataFrame {
+        let ohlcvv = self.select_ohlcvv2(from_time, to_time, windows_sec);
+
+        let mut buffer = OhlcvBuffer::new();
+
+        buffer.push_trades(ohlcvv);
+
+        return buffer.to_dataframe();
+    }
+
 
     pub fn select<F>(&mut self, from_time: MicroSec, to_time: MicroSec, mut f: F) where F: FnMut(&Trade) {
         let mut sql = "";
@@ -459,7 +473,6 @@ mod test_transaction_table {
         init_log();
 
         let db_name = db_full_path("FTX", "BTC-PERP");
-
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let start = NOW();
@@ -467,6 +480,22 @@ mod test_transaction_table {
         
         println!("{:?} / {} microsec", ohlcv, NOW()-start);
     }
+
+    #[test]
+    fn test_select_ohlcv4() {
+        init_log();
+
+        let db_name = db_full_path("FTX", "BTC-PERP");
+        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+
+        let start = NOW();
+        let ohlcv = db.select_ohclv_df(0, 0, 10);
+        
+        println!("{:?}", ohlcv);
+        println!("{} microsec", NOW()-start);        
+    }
+
+
 
 
     #[test]

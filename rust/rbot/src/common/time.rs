@@ -113,5 +113,13 @@ mod time_test {
         println!("{:?} {:?}", now, time_string(now));
     }
 
+    #[test]
+    fn test_FLOOR() {
+        assert_eq!(1_000_000, FLOOR(1_000_111, 1));
+        assert_eq!(10_000_000, FLOOR(10_123_111, 10));        
+        assert_eq!(10_000_000, FLOOR(19_123_111, 10));                
+        assert_eq!(20_000_000, FLOOR(29_123_111, 10));                        
+    }
+
 
 }
