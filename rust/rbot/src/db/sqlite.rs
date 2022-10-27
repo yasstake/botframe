@@ -1,12 +1,12 @@
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
-use rusqlite::{params, Connection, Result, Statement, Transaction, Params, Error, MappedRows, Row, Rows, params_from_iter};
+// use std::sync::mpsc;
+// use std::sync::mpsc::{Receiver, Sender};
+//use std::thread;
+use rusqlite::{params, Connection, Result, Error, params_from_iter};
 use crate::common::order::Trade;
-use crate::common::time::{MicroSec, self};
+use crate::common::time::{MicroSec, FLOOR, to_seconds, NOW};
 use crate::OrderSide;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Ohlcvv {
     pub time: f64,
     pub open: f64,
@@ -59,7 +59,6 @@ impl Ohlcvv {
             self.low = trade.price;
         }
 
-
         self.vol += trade.size;
 
         if  trade.order_side == OrderSide::Sell {
@@ -94,7 +93,6 @@ impl TradeTable {
             }
         }
     }
-
 
     pub fn create_table_if_not_exists(&self) {
         let _r = self.connection.execute(
@@ -167,6 +165,14 @@ impl TradeTable {
         }
     }
 
+    /// Tickバーをベースにしたohlcvを生成する。
+    /// TODO: not yet to implement
+    pub fn select_ohlcv_tick(&mut self, to_time: MicroSec, windows_sec: i64, num_bar: i64) -> Vec<Ohlcvv> {
+     //   let from_time = 
+     vec![]
+    }
+
+
     pub fn select_ohlcvv(&mut self, from_time: MicroSec, to_time: MicroSec, windows_sec: i64) -> Vec<Ohlcvv> {
         let mut sql = "";
         let mut param= vec![];
@@ -215,36 +221,48 @@ impl TradeTable {
         return ohlcvv;
 
     }
+    
+    pub fn select_ohlcvv2(&mut self, from_time: MicroSec, to_time: MicroSec, windows_sec: i64) -> Vec<Ohlcvv> {
+        let mut ohlcvv: Vec<Ohlcvv> = vec![];
 
-    fn conv(rows: &mut Rows) -> Trade {
-        let row = rows.next().unwrap().unwrap();
-        let bs_str: String = row.get_unwrap(1);
-        let bs = OrderSide::from_str(bs_str.as_str());
-        Trade {
-            time: row.get_unwrap(0),
-            price: row.get_unwrap(2),
-            size: row.get_unwrap(3),
-            order_side: bs,
-            liquid: row.get_unwrap(4),
-            id: row.get_unwrap(5)
+        let mut chunk = Ohlcvv::new();
+
+        self.select(from_time, to_time, |trade: &Trade| {
+            let trade_chunk_time = to_seconds(FLOOR(trade.time, windows_sec));
+            if chunk.time == 0.0 {
+                chunk.time = trade_chunk_time;
+            } else if chunk.time != trade_chunk_time {
+                ohlcvv.push(chunk);
+                chunk = Ohlcvv::new();
+            }
+            
+            chunk.append(&trade);
+        });
+
+        if chunk.time != 0.0 {
+            ohlcvv.push(chunk);
         }
+
+        return ohlcvv;
     }
 
-
-    pub fn select<F>(&mut self, f: F, from_time: MicroSec, to_time: MicroSec) where F: Fn(&Trade) {
+    pub fn select<F>(&mut self, from_time: MicroSec, to_time: MicroSec, mut f: F) where F: FnMut(&Trade) {
         let mut sql = "";
         let mut param= vec![];
 
         if 0 < to_time {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2";
+            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
             param = vec![from_time, to_time];
         }
         else {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp ";
+            //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp";
             param = vec![from_time];
         }
 
         let mut statement = self.connection.prepare(sql).unwrap();        
+
+        let start_time = NOW();
 
         let _transaction_iter = statement.query_map(params_from_iter(param.iter()), |row| {
 
@@ -261,25 +279,16 @@ impl TradeTable {
             })
         }).unwrap();
 
+        log::debug!("create iter {} microsec", NOW() - start_time);
+
         for trade in _transaction_iter {
             match trade {
-                Ok(t) => f(&t),
+                Ok(mut t) => {
+                    f(&t);
+                },
                 Err(e) => log::error!("{:?}", e)
             }
         }
-
-        /*
-
-        let mut statement = self.connection.prepare(sql).unwrap();
-
-        // let time_iters= statement.query_map(params_from_iter(param.iter()), conv);
-        //return Box::new(statement.query(params_from_iter(param.iter())));
-        let iters = statement.query(params_from_iter(param.iter()));
-
-        for rows in iters {
-            f(rows);
-        }
-        */
     }
 
 
@@ -307,15 +316,22 @@ impl TradeTable {
     }
     */
 
-    pub fn insert_records(&mut self, trades: &Vec<Trade>) {
-        let mut statement = self.connection.prepare(
+    pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<(), Error> {
+        let mut tx = self.connection.transaction()?;
+
+        let sql =   r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
+                                values (?1, ?2, ?3, ?4, ?5, ?6) "#;
+
+        /*
+        let mut statement = tx.prepare(
             r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
                      values (?1, ?2, ?3, ?4, ?5, ?6)
                 "#
         ).unwrap();
+        */
 
         for rec in trades {
-            let _size = statement.execute(params![
+            let _size = tx.execute(sql, params![
                 rec.time,
                 rec.order_side.to_string(),
                 rec.price,
@@ -324,6 +340,7 @@ impl TradeTable {
                 rec.id
             ]);
         }
+        tx.commit()
     }
 }
 
@@ -337,8 +354,11 @@ mod test_transaction_table {
     use std::sync::mpsc;
     use std::sync::mpsc::{Receiver, Sender};
     use std::thread;
-    use chrono::Duration;
+
+    
     use crate::fs::db_full_path;
+    use crate::common::time::NOW;
+    use crate::common::init_log;
 
     use super::*;
 
@@ -389,7 +409,7 @@ mod test_transaction_table {
         let mut table = TradeTable::open("test.db").unwrap();
         println!("0-0");
 
-        table.select(|row|{println!("{:?}",row)}, 0, 0);
+        table.select(0, 0, |row|{println!("{:?}",row)});
     }
 
 
@@ -406,16 +426,45 @@ mod test_transaction_table {
     }
 
     #[test]
+    fn test_select_ohlcv2() {
+        let db_name = db_full_path("FTX", "BTC-PERP");
+
+        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+
+        let start = NOW();
+        let ohlcv = db.select_ohlcvv2(0, 0, 6000);
+        
+        println!("{:?} / {} microsec", ohlcv, NOW()-start);
+    }
+
+    #[test]
+    fn test_select_ohlcv3() {
+        init_log();
+
+        let db_name = db_full_path("FTX", "BTC-PERP");
+
+        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+
+        let start = NOW();
+        let ohlcv = db.select(0, 0, |_trade|{});
+        
+        println!("{:?} / {} microsec", ohlcv, NOW()-start);
+    }
+
+
+    #[test]
     fn test_send_channel() {
         let (tx, rx): (Sender<Trade>, Receiver<Trade>) = mpsc::channel();
 
-        let handle = thread::spawn(move || {
+        let th = thread::Builder::new().name("FTx".to_string());
+        
+        let handle = th.spawn(move || {
             for i in 0..100 {
                 let trade = Trade::new(i, 10.0, 10.0, OrderSide::Buy, false, "abc1".to_string());
                 println!("<{:?}", trade);
-                tx.send(trade);
+                let _= tx.send(trade);
             }
-        });
+        }).unwrap();
 
         for recv_rec in rx {
             println!(">{:?}", recv_rec);
@@ -444,5 +493,12 @@ mod test_transaction_table {
         // handle.join().unwrap();　// 送信側がスレッドだとjoinがうまくいかない。
         thread::sleep(std::time::Duration::from_secs(5));
     }
+
+
+
+
+// 10秒以上間があいている場所の検出SQL
+// select time_stamp, sub_time from(select time_stamp, time_stamp - lag(time_stamp, 1, 0) OVER (order by time_stamp) sub_time  from trades order by time_stamp) where sub_time > 100000000;
+
 }
 

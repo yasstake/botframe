@@ -2,7 +2,7 @@
 // All rights reserved. Absolutely NO warranty.
 
 use common::{
-    order::{Currency, MarketType, Order, OrderSide},
+    order::{Currency, Order, OrderSide},
     time::time_string,
 };
 use pyo3::prelude::*;
@@ -25,9 +25,7 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(time_string, m)?)?;
     m.add_class::<Order>()?;
-    m.add_class::<MarketType>()?;
     m.add_class::<OrderSide>()?;
     m.add_class::<Currency>()?;
-    m.add_class::<MarketType>()?;
     Ok(())
 }

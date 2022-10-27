@@ -14,11 +14,6 @@ pub enum Currency {
     USDT,
 }
 
-#[pyclass]
-pub struct MarketType {
-    foreign: Currency,
-    home: Currency,
-}
 
 #[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Display)]

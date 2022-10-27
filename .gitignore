@@ -13,3 +13,6 @@ rust/sandbox/Cargo.lock
 rust/botframework/.RData
 rust/botframework/.Rhistory
 rust/rbot/test.db
+.DS_Store
+rust/botframework/TEST/python/*.xz
+.gitignore

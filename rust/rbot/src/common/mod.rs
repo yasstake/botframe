@@ -1,4 +1,4 @@
-use log::{LevelFilter, SetLoggerError};
+use log::{LevelFilter};
 use simple_logger::SimpleLogger;
 
 pub mod time;

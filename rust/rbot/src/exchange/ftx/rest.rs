@@ -2,7 +2,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use crate::common::time::{DAYS, HHMM, MicroSec, NOW, to_seconds, time_string};
 use crate::common::order::Trade;
-use crate::exchange::ftx::message::{FtxTrade, FtxTradeMessage};
+use crate::exchange::ftx::message::{FtxTradeMessage};
 use crate::db::sqlite::TradeTable;
 use log;
 
@@ -114,11 +114,11 @@ mod test_ftx_client {
     use std::sync::mpsc;
     use std::sync::mpsc::{Receiver, Sender};
     use std::thread;
-    use std::io::Cursor;
+    //use std::io::Cursor;
     use crate::common::init_log;
-    use crate::common::order::OrderSide;
+    //use crate::common::order::OrderSide;
     use crate::common::time::{DAYS, NOW};
-    use crate::exchange::ftx::message::FtxTradeMessage;
+    //use crate::exchange::ftx::message::FtxTradeMessage;
     use crate::fs::db_full_path;
     use crate::time_string;
     use crate::db::sqlite::TradeTable;
@@ -200,7 +200,7 @@ mod test_ftx_client {
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
         db.create_table_if_not_exists();
 
-        download_trade_call(BTCMARKET, 1, |trade| {db.insert_records(&trade)});
+        download_trade_call(BTCMARKET, 1, |trade| {db.insert_records(&trade).unwrap()});
     }
 
     #[test]
@@ -222,12 +222,11 @@ mod test_ftx_client {
 
         loop {
             match rx.recv() {
-                Ok(trades) => db.insert_records(&trades),
+                Ok(trades) => db.insert_records(&trades).unwrap(),
                 Err(e) => {println!("{:?}", e); break;}
             }
         }
     }
-
 
 
 }
