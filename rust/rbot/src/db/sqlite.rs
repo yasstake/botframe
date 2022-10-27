@@ -1,9 +1,11 @@
-// use std::sync::mpsc;
-// use std::sync::mpsc::{Receiver, Sender};
-//use std::thread;
+
+
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread;
 use rusqlite::{params, Connection, Result, Error, params_from_iter};
 use crate::common::order::Trade;
-use crate::common::time::{MicroSec, FLOOR, to_seconds, NOW};
+use crate::common::time::{MicroSec, FLOOR, to_seconds, NOW, time_string};
 use crate::OrderSide;
 
 #[derive(Debug, Clone, Copy)]
@@ -172,6 +174,22 @@ impl TradeTable {
      vec![]
     }
 
+    pub fn info(&mut self) -> String {
+        //let sql = "select min(time_stamp), max(time_stamp), count(*) from trades";
+        let sql = "select min(time_stamp), max(time_stamp), count(*) from trades";        
+        
+        let r = self.connection.query_row(sql, [], |row|{
+            let min: i64 = row.get_unwrap(0);
+            let max: i64 = row.get_unwrap(1);
+            let count: i64 = row.get_unwrap(2);
+
+            Ok(format!("{{\"start\": {}, \"end\": {}, \"count\": {}}}", time_string(min), time_string(max), count))
+        });
+
+        // println!("{}", r.unwrap());
+
+        return r.unwrap();
+    }
 
     pub fn select_ohlcvv(&mut self, from_time: MicroSec, to_time: MicroSec, windows_sec: i64) -> Vec<Ohlcvv> {
         let mut sql = "";
@@ -322,14 +340,6 @@ impl TradeTable {
         let sql =   r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
                                 values (?1, ?2, ?3, ?4, ?5, ?6) "#;
 
-        /*
-        let mut statement = tx.prepare(
-            r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
-                     values (?1, ?2, ?3, ?4, ?5, ?6)
-                "#
-        ).unwrap();
-        */
-
         for rec in trades {
             let _size = tx.execute(sql, params![
                 rec.time,
@@ -412,6 +422,13 @@ mod test_transaction_table {
         table.select(0, 0, |row|{println!("{:?}",row)});
     }
 
+    #[test]
+    fn test_info() {
+        let db_name = db_full_path("FTX", "BTC-PERP");
+
+        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        println!("{}", db.info());
+    }
 
 
     #[test]

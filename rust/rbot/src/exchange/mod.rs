@@ -1,4 +1,4 @@
-mod ftx;
+pub mod ftx;
 
 
 enum ExchangeName {

@@ -11,7 +11,7 @@ const FTX_REST_ENDPOINT: &str = "https://ftx.com/api";
 const BTCMARKET: &str = "BTC-PERP";
 
 
-fn download_trade_ndays(market_name: &str, ndays: i64, db: &mut TradeTable) {
+pub fn download_trade_ndays(market_name: &str, ndays: i64, db: &mut TradeTable) {
     log::debug!("download_trade_ndays {}", ndays);
     let start_time = NOW() - DAYS(ndays) - HHMM(0, 10);
     let mut end_time = NOW() + HHMM(0, 5);   // 5分後を指定し最新を取得。
@@ -38,9 +38,9 @@ fn download_trade_ndays(market_name: &str, ndays: i64, db: &mut TradeTable) {
     }
 }
 
-fn download_trade_call<F>(market_name: &str, ndays: i64, mut f: F) where F: FnMut(Vec<Trade>) {
+pub fn download_trade_call<F>(market_name: &str, ndays: i32, mut f: F) where F: FnMut(Vec<Trade>) {
     log::debug!("download_trade_ndays {}", ndays);
-    let start_time = NOW() - DAYS(ndays) - HHMM(0, 10);
+    let start_time = NOW() - DAYS(ndays as i64) - HHMM(0, 10);
     let mut end_time = NOW() + HHMM(0, 5);   // 5分後を指定し最新を取得。
 
     loop {
@@ -70,7 +70,7 @@ fn download_trade_call<F>(market_name: &str, ndays: i64, mut f: F) where F: FnMu
 /// TODO: エラーハンドリング（JSONエラー/503エラーの場合、現在はPanicしてしまう）
 /// start_time, to_timeは秒単位のため開始は切り捨て、終了は切り上げする。
 /// そのため、重複が発生するのであとでIDで重複削除する必要がある。
-fn download_trade(market_name: &str, from_microsec: MicroSec, to_microsec: MicroSec ) -> Vec<Trade> {
+pub fn download_trade(market_name: &str, from_microsec: MicroSec, to_microsec: MicroSec ) -> Vec<Trade> {
     let start_sec = to_seconds(from_microsec) as i64;
     let end_sec = to_seconds(to_microsec) as i64 + 1;
 

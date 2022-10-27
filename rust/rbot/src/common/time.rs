@@ -2,6 +2,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use pyo3::prelude::*;
 
 
+
 pub const MICRO_SECOND: i64 = 1_000_000;
 
 // Timestamp scale for system wide.(Nano Sec is default)
@@ -11,6 +12,7 @@ pub fn to_seconds(microsecond: MicroSec) -> f64 {
     return (microsecond as f64) / (MICRO_SECOND as f64);
 }
 
+#[allow(non_snake_case)]
 pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     let unit_sec_micro = SEC(unit_sec);
 
@@ -35,6 +37,7 @@ pub fn parse_time(t: &str) -> MicroSec {
 
     return datetime.unwrap().timestamp_micros();
 }
+
 
 #[pyfunction]
 pub fn DAYS(days: i64) -> MicroSec {

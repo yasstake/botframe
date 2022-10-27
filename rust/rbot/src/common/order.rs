@@ -1,19 +1,8 @@
 use super::time::MicroSec;
 use pyo3::pyclass;
+use pyo3::pymethods;
 
 use strum_macros::Display;
-
-#[pyclass]
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
-pub enum Currency {
-    BTC,
-    ETH,
-    XRP,
-    SOL,
-    USD,
-    USDT,
-}
-
 
 #[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
@@ -50,6 +39,7 @@ pub struct Trade {
     pub liquid: bool,
     pub id: String,
 }
+
 
 impl Trade {
     pub fn new(time_microsec: MicroSec, price: f64, size: f64, order_side: OrderSide, liquid: bool, id: String) -> Self{
