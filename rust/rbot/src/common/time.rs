@@ -4,12 +4,21 @@ use pyo3::prelude::*;
 
 
 pub const MICRO_SECOND: i64 = 1_000_000;
+pub const NANO_SECOND: i64 = 1_000_000_000;
 
 // Timestamp scale for system wide.(Nano Sec is default)
 pub type MicroSec = i64;
 
 pub fn to_seconds(microsecond: MicroSec) -> f64 {
     return (microsecond as f64) / (MICRO_SECOND as f64);
+}
+
+pub fn to_naivedatetime(microsecond: MicroSec) -> NaiveDateTime {
+    let sec = microsecond / MICRO_SECOND;
+    let nano = ((microsecond % MICRO_SECOND) * 1_000) as u32;
+    let datetime = NaiveDateTime::from_timestamp(sec, nano);
+
+    return datetime;
 }
 
 #[allow(non_snake_case)]
@@ -23,9 +32,7 @@ pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
 
 #[pyfunction]
 pub fn time_string(t: MicroSec) -> String {
-    let sec = t / MICRO_SECOND;
-    let nano = ((t % MICRO_SECOND) * 1_000) as u32;
-    let datetime = NaiveDateTime::from_timestamp(sec, nano);
+    let datetime = to_naivedatetime(t);
 
     // return datetime.format("%Y-%m-%d-%H:%M:%S.").to_string() + format!("{:06}", nano).as_str();
     return datetime.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();

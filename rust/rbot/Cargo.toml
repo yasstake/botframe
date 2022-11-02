@@ -35,8 +35,10 @@ directories= "4.0.1"
 polars = {version="0.24"}
 polars-core = {version = "0.24", features=["ndarray", "temporal", "dtype-time", "object"]}
 polars-lazy = {version="0.24", features=["dynamic_groupby"]}
-polars-io = {version="0.24", features=["ipc"]}
+polars-time = {version="0.24"}
 
+ndarray = {version="0.15"}
+numpy = {version="0.17"}
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

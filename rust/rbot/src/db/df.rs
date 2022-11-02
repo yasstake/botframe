@@ -1,15 +1,92 @@
 
 
+
+use polars::prelude::Duration;
 use polars::prelude::DataFrame;
 use polars::prelude::Series;
 use polars::prelude::NamedFrom;
+use polars::prelude::ChunkCompare;
+use polars::prelude::DynamicGroupOptions;
+use polars_core::prelude::SortOptions;
+use polars_lazy::prelude::col;
+use polars_lazy::dsl::IntoLazy;
+use polars_time::ClosedWindow;
 use chrono::NaiveDateTime;
-use crate::common::time::{MICRO_SECOND, MicroSec};
+use crate::common::time::{MICRO_SECOND, MicroSec, NANO_SECOND, to_naivedatetime};
+use crate::common::order::Trade;
 
 use super::sqlite::Ohlcvv;
 
+#[allow(non_upper_case_globals)]
+#[allow(non_snake_case)]
+pub mod KEY {
+    pub const time_stamp :&str = "time_stamp";
 
-fn convert_datetime(t: Vec<f64>) -> Vec<NaiveDateTime> {
+    // for trade
+    pub const price :&str = "price";
+    pub const size :&str = "size";
+    pub const order_side :&str = "order_side";
+    pub const liquid :&str = "liquid";
+    pub const id :&str = "id";
+
+    // for ohlcv
+    pub const open :&str = "open";
+    pub const high :&str = "high";
+    pub const low :&str = "low";
+    pub const close :&str = "close";
+    pub const vol :&str = "vol";
+    pub const sell_vol :&str = "sell_vol";
+    pub const sell_count :&str = "sell_count";
+    pub const buy_vol :&str = "buy_vol";
+    pub const buy_count :&str = "buy_count";
+    pub const start_time :&str = "start_time";
+    pub const end_time :&str = "end_time";
+}
+
+
+/// Cutoff from_time to to_time(not include)
+pub fn select_df(df: &DataFrame, from_time: MicroSec, to_time: MicroSec) -> DataFrame {
+    let mut start_time = from_time;
+    let mut end_time  = to_time;
+
+    if from_time == 0 {
+        start_time = start_time_df(df);
+    }
+
+    if to_time == 0 {
+        end_time = end_time_df(df);
+    }
+
+    let mask = 
+                df.column(KEY::time_stamp).unwrap().gt(start_time).unwrap() & 
+                df.column(KEY::time_stamp).unwrap().lt_eq(end_time).unwrap();
+
+    let df = df.filter(&mask).unwrap();
+
+    return df;
+}
+
+
+pub fn start_time_df(df: &DataFrame) -> MicroSec {
+    df.column(KEY::time_stamp).unwrap().min().unwrap()
+}
+
+pub fn end_time_df(df: &DataFrame) -> MicroSec {
+    df.column(KEY::time_stamp).unwrap().max().unwrap()    
+}
+
+
+pub fn merge_df(df1: &DataFrame, df2: &DataFrame) -> DataFrame {
+    let df2_start_time = start_time_df(df1);
+
+    let df = select_df(df1, 0, df2_start_time);
+    
+    return df.vstack(df2).unwrap();
+}
+
+
+/*
+fn convert_datetime_vec(t: Vec<f64>) -> Vec<NaiveDateTime> {
     //        let datetime: Vec<NaiveDateTime> = 
             let datetime = 
                 t.iter()
@@ -20,7 +97,7 @@ fn convert_datetime(t: Vec<f64>) -> Vec<NaiveDateTime> {
     
             return datetime;
 }
-
+*/
 
 
 ///
@@ -43,7 +120,7 @@ pub struct OhlcvBuffer {
 }
 
 impl OhlcvBuffer {
-    pub fn new() -> OhlcvBuffer {
+    pub fn new() -> Self {
         return OhlcvBuffer {
             time: Vec::new(),
             open: Vec::new(),
@@ -97,19 +174,20 @@ impl OhlcvBuffer {
     }
 
 
+    /// TODO: 文字列の定義
     pub fn to_dataframe(&self) -> DataFrame{
-        let time = Series::new("time", convert_datetime(self.time.to_vec()));
-        let open = Series::new("open", self.open.to_vec());
-        let high = Series::new("high", self.high.to_vec());
-        let low = Series::new("low", self.low.to_vec());
-        let close = Series::new("close", self.close.to_vec());
-        let vol = Series::new("vol", self.vol.to_vec());
-        let sell_vol = Series::new("sell_vol", self.sell_vol.to_vec());
-        let sell_count = Series::new("sell_count", self.sell_count.to_vec());
-        let buy_vol = Series::new("buy_vol", self.buy_vol.to_vec());
-        let buy_count = Series::new("buy_count", self.buy_count.to_vec());
-        let start_time = Series::new("start_time", convert_datetime(self.start_time.to_vec()));
-        let end_time = Series::new("end_time", convert_datetime(self.end_time.to_vec()));
+        let time = Series::new(KEY::time_stamp, self.time.to_vec());
+        let open = Series::new(KEY::open, self.open.to_vec());
+        let high = Series::new(KEY::high, self.high.to_vec());
+        let low = Series::new(KEY::low, self.low.to_vec());
+        let close = Series::new(KEY::close, self.close.to_vec());
+        let vol = Series::new(KEY::vol, self.vol.to_vec());
+        let sell_vol = Series::new(KEY::sell_vol, self.sell_vol.to_vec());
+        let sell_count = Series::new(KEY::sell_count, self.sell_count.to_vec());
+        let buy_vol = Series::new(KEY::buy_vol, self.buy_vol.to_vec());
+        let buy_count = Series::new(KEY::buy_count, self.buy_count.to_vec());
+        let start_time = Series::new(KEY::start_time, self.start_time.to_vec());
+        let end_time = Series::new(KEY::end_time, self.end_time.to_vec());
 
         let df = DataFrame::new(vec![
             time,
@@ -124,6 +202,179 @@ impl OhlcvBuffer {
             buy_count,
             start_time,
             end_time,
+        ]).unwrap();
+
+        return df;        
+    }
+}
+
+/// Ohlcvのdfを内部にキャッシュとしてもつDataFrameクラス。
+/// ・　生DFのマージ（あたらしいdfの期間分のデータを削除してから追加。重複がないようにマージする。
+/// ・　OHLCVの生成
+pub struct OhlcvDataFrame {
+
+    df: DataFrame
+}
+
+impl OhlcvDataFrame {
+
+    /*
+    // TODO: DFの最初の時間とおわりの時間を取得する。
+    pub fn start_time() {
+
+    }
+
+    pub fn end_time() {
+
+    }
+    */
+
+    //TODO: カラム名の変更
+    pub fn select(&self, mut start_time_ms: i64, mut end_time_ms: i64) -> Self {
+        if end_time_ms == 0 {
+            end_time_ms = self.df.column("timestamp").unwrap().max().unwrap();
+        }
+    
+        let mask = self.df.column("timestamp").unwrap().gt(start_time_ms).unwrap();
+        self.df.column("timestamp").unwrap().lt_eq(end_time_ms).unwrap();
+    
+        let df = self.df.filter(&mask).unwrap();
+    
+        return OhlcvDataFrame{
+            df
+        };
+    }
+}
+
+
+
+
+
+
+
+
+/*
+pub fn ohlcv_df_from_ohlc(
+    df: &DataFrame,
+    mut current_time_ms: i64,
+    width_sec: i64,
+    count: i64,
+) -> DataFrame {
+    if current_time_ms <= 0 {
+        current_time_ms = df.column("timestamp").unwrap().max().unwrap();
+    }
+
+    let width_ms = width_sec * 1_000;
+
+    // println!("count{} width_sec{} width_ms{}", count, width_sec, width_ms);
+
+    let mut start_time_ms = 0;
+    if count != 0 {
+        current_time_ms - (width_ms * (count as i64));
+    }
+
+    //return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
+    return ohlcv_from_ohlcv_dynamic(&mut df, width_sec);
+}
+
+///
+/// TODO: グループ化の単位を個数に変えられないか？　→ Dollbarへの拡張を可能とするため。
+fn ohlcv_from_ohlcv_dynamic(
+    df: &mut DataFrame,
+    width_sec: i64,
+) -> DataFrame {
+    // TODO  あとで性能を計測する。
+//    let df = df.clone();
+
+    return df
+        .lazy()
+        .groupby_dynamic(
+            vec![],
+            DynamicGroupOptions {
+                index_column: "timestamp".into(),
+                every: Duration::new(width_sec * NANO_SECOND), // グループ間隔
+                period: Duration::new(width_sec * NANO_SECOND), // データ取得の幅（グループ間隔と同じでOK)
+                offset: Duration::new(0),
+                truncate: true,            // タイムスタンプを切り下げてまとめる。
+                include_boundaries: false, // データの下限と上限を結果に含めるかどうか？(falseでOK)
+                closed_window: ClosedWindow::Left, // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
+            },
+        )
+        .agg([
+            col("open").first().alias("open"),
+            col("high").max().alias("high"),
+            col("low").min().alias("low"),
+            col("close").last().alias("close"),
+            col("vol").sum().alias("vol"),
+        ])
+        .sort(
+            "timestamp",
+            SortOptions {
+                descending: false,
+                nulls_last: false,
+            },
+        )
+        .collect()
+        .unwrap();
+}
+
+*/
+
+
+pub struct TradeBuffer {
+    pub time_stamp: Vec<MicroSec>,
+    pub price: Vec<f64>,
+    pub size: Vec<f64>,
+    pub order_side: Vec<bool>,
+    pub liquid: Vec<bool>,
+}
+
+impl TradeBuffer {
+    pub fn new() -> Self {
+        return TradeBuffer {
+            time_stamp: Vec::new(),
+            price: Vec::new(),
+            size: Vec::new(),
+            order_side: Vec::new(),
+            liquid: Vec::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.time_stamp.clear();
+        self.price.clear();
+        self.size.clear();
+        self.order_side.clear();
+        self.liquid.clear();
+    }
+
+    pub fn push_trades(&mut self, trades: Vec<Trade>) {
+        for trade in trades {
+            self.push_trade(&trade);
+        }
+    }
+
+    pub fn push_trade(&mut self, trade: &Trade) {
+        self.time_stamp.push(trade.time);
+        self.price.push(trade.price);
+        self.size.push(trade.size);
+        self.order_side.push(trade.order_side.is_buy_side());
+        self.liquid.push(trade.liquid);
+    }
+
+    pub fn to_dataframe(&self) -> DataFrame{
+        let time_stamp = Series::new(KEY::time_stamp, self.time_stamp.to_vec());
+        let price = Series::new(KEY::price, self.price.to_vec());
+        let size = Series::new(KEY::size, self.size.to_vec());
+        let order_side = Series::new(KEY::order_side, self.order_side.to_vec());
+        let liquid = Series::new(KEY::liquid, self.liquid.to_vec());
+
+        let df = DataFrame::new(vec![
+            time_stamp,
+            price,
+            size,
+            order_side,
+            liquid
         ]).unwrap();
 
         return df;        

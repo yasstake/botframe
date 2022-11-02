@@ -8,6 +8,7 @@
 use serde_derive::{Deserialize, Serialize};
 use crate::common::order::Trade;
 use crate::OrderSide;
+use serde_json::Error;
 
 //use log::Log;
 use crate::common::time::parse_time;
@@ -27,6 +28,24 @@ impl FtxTradeMessage {
         }
 
         trade
+    }
+
+    pub fn from_str(message: &str) -> Result<Self, Error> {
+        let result = serde_json::from_str::<FtxTradeMessage>(message);
+
+        match result {
+            Ok(m) => {
+                if ! m.success {
+                    println!("REST ERROR {:?}", m);
+                }
+
+                return Ok(m);
+            },
+            Err(e) => {
+                log::debug!("Parse error {:?}", e);
+                return Err(e);
+            }
+        }
     }
 }
 
@@ -87,14 +106,6 @@ mod test_ftx_message {
         let trades = message.get_trades();
         println!("{:?}", trades);
     }
-
-    #[test]
-    fn test_debug_message() {
-        SimpleLogger::new().env().init().unwrap();
-
-        log::debug!("{}", "hello world");
-    }
-
 }
 
 

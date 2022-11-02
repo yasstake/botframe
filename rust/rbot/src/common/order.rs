@@ -26,6 +26,31 @@ impl OrderSide {
             }
         }
     }
+
+    pub fn from_buy_side(buyside: bool) -> Self {
+        match buyside {
+            true => {
+                return OrderSide::Buy;
+            },
+            _ => {
+                return OrderSide::Sell;
+            }
+        }
+    }
+
+    pub fn is_buy_side(&self) -> bool {
+        match &self {
+            OrderSide::Buy => {
+                return true;
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+
+
 }
 
 // Represent one Trade execution.
@@ -51,6 +76,10 @@ impl Trade {
             liquid,
             id
         }
+    }
+
+    pub fn to_csv(&self) -> String {
+        format!("{}, {}, {}, {}, {}, {}\n", self.time, self.price, self.size, self.order_side, self.liquid, self.id)
     }
 }
 
@@ -221,6 +250,17 @@ mod order_side_test {
         assert_eq!(OrderSide::from_str("SELL"), OrderSide::Sell);
         assert_eq!(OrderSide::from_str("BS"), OrderSide::Unknown);
     }
+
+    fn test_from_buy_side() {
+        assert_eq!(OrderSide::from_buy_side(true), OrderSide::Buy);
+        assert_eq!(OrderSide::from_buy_side(false), OrderSide::Sell);
+    }
+
+    fn test_is_buy_side() {
+        assert_eq!(OrderSide::Buy.is_buy_side(), true);
+        assert_eq!(OrderSide::Sell.is_buy_side(), false);        
+    }
+
 }
 
 #[cfg(test)]
@@ -347,4 +387,10 @@ mod order_result_test {
         }
     }
 
+}
+
+#[derive(Debug)]
+pub struct TimeChunk {
+    pub start: MicroSec,
+    pub end: MicroSec
 }
