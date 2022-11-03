@@ -17,10 +17,16 @@ use pyo3::exceptions::PyValueError;
 
 use crate::common::order::Trade;
 use crate::common::time::MicroSec;
+use crate::common::time::NOW;
+use crate::common::time::DAYS;
+use crate::common::time::SEC;
+
 use crate::db::df;
 use crate::fs::db_full_path;
+use crate::db::df::TradeBuffer;
 use crate::db::sqlite::TradeTable;
-use self::rest::download_trade_callback_ndays;
+use self::rest::{download_trade_callback_ndays, download_trade_chunks_callback};
+
 
 use polars::prelude::DataFrame;
 use polars::prelude::Float64Type;
@@ -36,6 +42,7 @@ pub struct FtxMarket {
     name: String,
     pub dummy: bool,
     db: TradeTable,
+    df: DataFrame,
 }
 
 
@@ -52,6 +59,7 @@ impl FtxMarket {
             name: market_name.to_string(),
             dummy,
             db,
+            df: TradeBuffer::new().to_dataframe(),
         }
     }
 
@@ -59,16 +67,36 @@ impl FtxMarket {
         return self.db.info();
     }
 
-    pub fn load_log(&mut self, ndays: i32) -> String {
+    pub fn load_log(&mut self, ndays: i32, force: bool) -> String {
         let market = self.name.to_string();
         let (tx, rx): (Sender<Vec<Trade>>, Receiver<Vec<Trade>>) = mpsc::channel();        
 
-        let _handle = thread::spawn(move || {
-            download_trade_callback_ndays(market.as_str(), ndays,
-                |trade| {
-                    let _ = tx.send(trade);
+        if force {
+            log::debug!("Force donwload for {} days", ndays);
+            let _handle = thread::spawn(move || {
+                download_trade_callback_ndays(market.as_str(), ndays,
+                    |trade| {
+                        let _ = tx.send(trade);
+                });
             });
-        });
+        }
+        else {
+            log::debug!("Diff donwload for {} days", ndays);            
+            let chunks = self.db.select_gap_chunks(
+                NOW() - DAYS(ndays as i64),
+                0,
+                SEC(20)
+            );
+
+            log::debug!("{:?}", chunks);
+
+            let _handle = thread::spawn(move || {
+                download_trade_chunks_callback(market.as_str(), &chunks, 
+                    |trade| {
+                        let _ = tx.send(trade);
+                });
+            });
+        }
 
         loop {
             match rx.recv() {
@@ -92,8 +120,43 @@ impl FtxMarket {
 
         return Ok(r);
     }
+
+    pub fn load_to_df(&mut self, from_time: MicroSec, to_time: MicroSec) {
+        self.df = self.db.select_df(from_time, to_time);
+    }
 }
 
 
 
 
+#[cfg(test)]
+mod test_exchange_ftx{
+    use crate::common::init_log;
+    use crate::common::time::DAYS;
+    use crate::db::df::ohlcv_df;
+
+    use super::*;
+    #[test]
+    fn test_download_missing_chunks() {
+        init_log();
+
+        let mut ftx = FtxMarket::new("BTC-PERP", true);
+
+        ftx.load_log(60, false);
+    }
+
+
+    #[test]
+    fn test_load_to_df() {
+        let mut ftx = FtxMarket::new("BTC-PERP", true);
+
+        ftx.load_to_df(NOW()-DAYS(1), 0);
+
+        println!("{:?}", ftx.df);
+
+        let ohlcv = ohlcv_df(&ftx.df, 0, 0, 10);
+
+        println!("{:?}", ohlcv);
+    }
+
+}

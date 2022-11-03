@@ -3,13 +3,18 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use crate::common::order::{TimeChunk, Trade};
-use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, MICRO_SECOND, NOW};
+use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, MICRO_SECOND, NOW, DAYS};
 use crate::OrderSide;
 use polars::prelude::DataFrame;
 use rusqlite::{params, params_from_iter, Connection, Error, Result};
 
-use super::df::OhlcvBuffer;
+use super::df::{OhlcvBuffer, merge_df};
 use crate::db::df::TradeBuffer;
+use crate::db::df::ohlcv_df;
+use crate::db::df::start_time_df;
+use crate::db::df::end_time_df;
+use crate::db::df::select_df;
+
 use log::log_enabled;
 use log::Level::Debug;
 
@@ -108,6 +113,7 @@ fn check_skip_time(mut trades: &Vec<Trade>) {
 
 pub struct TradeTable {
     connection: Connection,
+    cache_df: DataFrame
 }
 
 impl TradeTable {
@@ -115,7 +121,12 @@ impl TradeTable {
         let result = Connection::open(name);
 
         match result {
-            Ok(conn) => return Ok(TradeTable { connection: conn }),
+            Ok(conn) => {
+                return Ok(TradeTable { 
+                    connection: conn,
+                    cache_df: TradeBuffer::new().to_dataframe()
+                })
+            },
             Err(e) => {
                 println!("{:?}", e);
                 return Err(e);
@@ -212,6 +223,54 @@ impl TradeTable {
         return buffer.to_dataframe();
     }
 
+    pub fn load_df(&mut self, from_time: MicroSec, to_time: MicroSec) {
+        self.cache_df = self.select_df(from_time, to_time);
+    }
+
+    pub fn update_cache_df(&mut self, from_time: MicroSec, to_time: MicroSec) {
+        let mut df_start_time = 0;
+        
+        match start_time_df(&self.cache_df) {
+            Some(t) => {df_start_time = t;}
+            _ => {
+                // no cache / update all
+                self.load_df(from_time, to_time);
+                return;
+            }
+        }
+
+        let mut df_end_time = end_time_df(&self.cache_df).unwrap();
+
+        // delete cache
+        if df_start_time + DAYS(7) < from_time || to_time + DAYS(7) < df_end_time {
+            log::debug!("delete cache");
+            self.cache_df = select_df(&self.cache_df, from_time - DAYS(3), to_time+ DAYS(3));
+            df_start_time = start_time_df(&self.cache_df).unwrap();
+            df_end_time = end_time_df(&self.cache_df).unwrap();
+        }
+
+        // load data and merge cache
+        if from_time < df_start_time {
+            let df1 = &self.select_df(from_time, df_start_time);
+
+            log::debug!("load data before cache df1={:?} df2={:?}", df1.shape(), self.cache_df.shape());
+            self.cache_df = merge_df(&self.select_df(from_time, df_start_time), &self.cache_df);
+        }
+
+        if df_end_time < to_time {
+            let df2 = &self.select_df(df_end_time, to_time);
+
+            log::debug!("load data AFTER cache df1={:?} df2={:?}", self.cache_df.shape(), df2.shape());
+            self.cache_df = merge_df(&self.cache_df, &df2);
+        }
+    }
+
+    pub fn ohlcv_df(&mut self, from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> DataFrame {
+        self.update_cache_df(from_time, to_time);
+
+        return ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec);
+    }
+
     pub fn select_array(&mut self, from_time: MicroSec, to_time: MicroSec) -> ndarray::Array2<f64> {
         let trades = self.select_df(from_time, to_time);
 
@@ -228,17 +287,6 @@ impl TradeTable {
             .unwrap();
 
         array
-    }
-
-    /// TODO: not yet to implement
-    pub fn select_ohlcv_tick(
-        &mut self,
-        to_time: MicroSec,
-        windows_sec: i64,
-        num_bar: i64,
-    ) -> Vec<Ohlcvv> {
-        //   let from_time =
-        vec![]
     }
 
     pub fn info(&mut self) -> String {
@@ -283,7 +331,7 @@ impl TradeTable {
 
         return r;
     }
-
+    
     /// Find un-downloaded data time chunks.
     pub fn select_gap_chunks(
         &self,
@@ -297,14 +345,6 @@ impl TradeTable {
 
         let mut chunk = self.find_time_chunk_from(from_time, to_time, allow_size);
 
-        // no data in db
-        if chunk.len() == 0 {
-            return vec![TimeChunk {
-                start: from_time,
-                end: to_time,
-            }];
-        }
-
         // find in db
         let mut c = self.select_time_chunks_in_db(from_time, to_time, allow_size);
         chunk.append(&mut c);
@@ -312,6 +352,13 @@ impl TradeTable {
         // find after db time
         let mut c = self.find_time_chunk_to(from_time, to_time, allow_size);
         chunk.append(&mut c);
+        
+        if chunk.len() == 0 && from_time != to_time {
+            return vec![TimeChunk {
+                start: from_time,
+                end: to_time,
+            }];
+        }
 
         return chunk;
     }
@@ -324,15 +371,18 @@ impl TradeTable {
         to_time: MicroSec,
         allow_size: MicroSec,
     ) -> Vec<TimeChunk> {
-        let end_time = match self.start_time() {
+        let db_start_time = match self.start_time() {
             Ok(t) => t,
-            Err(e) => to_time,
+            Err(e) => {
+                return vec![];
+            }
         };
 
-        if from_time + allow_size <= end_time {
+        if from_time + allow_size <= db_start_time {
+            log::debug!("before db {:?}-{:?}", time_string(from_time), time_string(db_start_time));
             return vec![TimeChunk {
                 start: from_time,
-                end: end_time,
+                end: db_start_time,
             }];
         } else {
             return vec![];
@@ -345,14 +395,22 @@ impl TradeTable {
         to_time: MicroSec,
         allow_size: MicroSec,
     ) -> Vec<TimeChunk> {
-        let end_time = match self.end_time() {
+        let mut db_end_time = match self.end_time() {
+
             Ok(t) => t,
-            Err(e) => to_time,
+            Err(e) => {
+                return vec![];
+            }
         };
 
-        if end_time + allow_size < to_time {
+        if db_end_time < from_time{
+            db_end_time = from_time;
+        }
+
+        if db_end_time + allow_size < to_time {
+            log::debug!("after db {:?}-{:?}", time_string(db_end_time), time_string(to_time));                        
             return vec![TimeChunk {
-                start: end_time,
+                start: db_end_time,
                 end: to_time,
             }];
         } else {
@@ -369,29 +427,23 @@ impl TradeTable {
     ) -> Vec<TimeChunk> {
         let mut chunks: Vec<TimeChunk> = vec![];
 
-        // make first chunk
-        let start_time = match self.start_time() {
-            Ok(t) => t,
-            Err(e) => from_time,
-        };
-
         // find select db gaps
-
         let sql = r#"
         select time_stamp, sub_time from (
             select time_stamp, time_stamp - lag(time_stamp, 1, 0) OVER (order by time_stamp) sub_time  
-            from trades order by time_stamp) 
-            where $1 < sub_time and $2 < time_stamp
+            from trades where $1 < time_stamp) 
+            where $2 < sub_time order by time_stamp
         "#;
 
         let mut statement = self.connection.prepare(sql).unwrap();
-        let mut param = vec![allow_size, start_time];
+        let param = vec![from_time, allow_size];
 
         let chunk_iter = statement
             .query_map(params_from_iter(param.iter()), |row| {
                 let start_time: MicroSec = row.get_unwrap(0);
                 let missing_width: MicroSec = row.get_unwrap(1);
 
+                log::debug!("{}- gap{}", time_string(start_time), missing_width);
                 Ok(TimeChunk {
                     start: start_time,
                     end: start_time + missing_width,
@@ -399,109 +451,23 @@ impl TradeTable {
             })
             .unwrap();
 
+        let mut index = 0;
         for chunk in chunk_iter {
             if chunk.is_ok() {
-                chunks.push(chunk.unwrap());
+                let c = chunk.unwrap();
+
+                // skip first row.
+                if index != 0 {
+                    chunks.push(c);
+                }
+                index += 1;
             }
         }
 
         return chunks;
     }
 
-    pub fn select_ohlcvv(
-        &mut self,
-        from_time: MicroSec,
-        to_time: MicroSec,
-        windows_sec: i64,
-    ) -> Vec<Ohlcvv> {
-        let mut sql = "";
-        let mut param = vec![];
 
-        if 0 < to_time {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2";
-            param = vec![from_time, to_time];
-        } else {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp ";
-            param = vec![from_time];
-        }
-
-        let mut statement = self.connection.prepare(sql).unwrap();
-
-        let time_iters = statement
-            .query_map(params_from_iter(param.iter()), |row| {
-                let bs_str: String = row.get_unwrap(1);
-                let bs = OrderSide::from_str(bs_str.as_str());
-
-                Ok(Trade {
-                    time: row.get_unwrap(0),
-                    price: row.get_unwrap(2),
-                    size: row.get_unwrap(3),
-                    order_side: bs,
-                    liquid: row.get_unwrap(4),
-                    id: row.get_unwrap(5),
-                })
-            })
-            .unwrap();
-
-        let mut ohlcvv: Vec<Ohlcvv> = vec![];
-        let mut chunk: Ohlcvv = Ohlcvv::new();
-
-        // TODO: implement time window
-        for trade in time_iters {
-            if chunk.time == 0.0 {}
-
-            let t = trade.unwrap();
-            chunk.append(&t);
-            // chunk = Ohlcvv::new();
-        }
-
-        ohlcvv.push(chunk);
-        return ohlcvv;
-    }
-
-    pub fn select_ohlcvv2(
-        &mut self,
-        from_time: MicroSec,
-        to_time: MicroSec,
-        windows_sec: i64,
-    ) -> Vec<Ohlcvv> {
-        let mut ohlcvv: Vec<Ohlcvv> = vec![];
-
-        let mut chunk = Ohlcvv::new();
-
-        self.select(from_time, to_time, |trade: &Trade| {
-            let trade_chunk_time = FLOOR(trade.time, windows_sec) as f64;
-            if chunk.time == 0.0 {
-                chunk.time = trade_chunk_time;
-            } else if chunk.time != trade_chunk_time {
-                ohlcvv.push(chunk);
-                chunk = Ohlcvv::new();
-            }
-
-            chunk.append(&trade);
-        });
-
-        if chunk.time != 0.0 {
-            ohlcvv.push(chunk);
-        }
-
-        return ohlcvv;
-    }
-
-    pub fn select_ohclv_df(
-        &mut self,
-        from_time: MicroSec,
-        to_time: MicroSec,
-        windows_sec: i64,
-    ) -> DataFrame {
-        let ohlcvv = self.select_ohlcvv2(from_time, to_time, windows_sec);
-
-        let mut buffer = OhlcvBuffer::new();
-
-        buffer.push_trades(ohlcvv);
-
-        return buffer.to_dataframe();
-    }
 
     pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<(), Error> {
         let mut tx = self.connection.transaction()?;
@@ -643,7 +609,7 @@ mod test_transaction_table {
         let db_name = db_full_path("FTX", "BTC-PERP");
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        let chunks = db.select_gap_chunks(NOW() - DAYS(10), NOW(), 1_000_000 * 10);
+        let chunks = db.select_gap_chunks(NOW() - DAYS(1), NOW(), 1_000_000 * 13);
 
         println!("chunks {:?}", chunks);
 
@@ -663,7 +629,7 @@ mod test_transaction_table {
         let db_name = db_full_path("FTX", "BTC-PERP");
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        let chunks = db.find_time_chunk_from(NOW() - DAYS(10), NOW(), 1_000_000 * 30);
+        let chunks = db.find_time_chunk_from(NOW() - DAYS(1), NOW(), 1_000_000 * 10);
 
         println!("chunks {:?}", chunks);
 
@@ -677,7 +643,7 @@ mod test_transaction_table {
         let db_name = db_full_path("FTX", "BTC-PERP");
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        let chunks = db.find_time_chunk_to(NOW() - DAYS(10), NOW(), 1_000_000 * 120);
+        let chunks = db.find_time_chunk_to(NOW() - DAYS(1), NOW(), 1_000_000 * 120);
 
         println!("chunks {:?}", chunks);
 
@@ -691,7 +657,7 @@ mod test_transaction_table {
         let db_name = db_full_path("FTX", "BTC-PERP");
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        let chunks = db.select_time_chunks_in_db(NOW() - HHMM(10, 0), NOW(), 1_000_000 * 15);
+        let chunks = db.select_time_chunks_in_db(NOW() - DAYS(1), NOW(), 1_000_000 * 10);
 
         println!("chunks {:?}", chunks);
 
@@ -701,30 +667,37 @@ mod test_transaction_table {
     }
 
     #[test]
-    fn test_select_ohlcv() {
+    fn test_select_ohlcv_df() {
+        init_log();
         let db_name = db_full_path("FTX", "BTC-PERP");
 
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        let ohlcv = db.select_ohlcvv(0, 0, 120);
-
+        let start_timer = NOW();
+        let now = NOW();
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), now, 120);
         println!("{:?}", ohlcv);
+        println!("{} [us]", NOW()-start_timer);
+        
+        let start_timer = NOW();
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        println!("{:?}", ohlcv);
+        println!("{} [us]", NOW()-start_timer);
+
+        let start_timer = NOW();
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        println!("{:?}", ohlcv);
+        println!("{} [us]", NOW()-start_timer);
+
+        let start_timer = NOW();
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        println!("{:?}", ohlcv);
+        println!("{} [us]", NOW()-start_timer);
     }
 
-    #[test]
-    fn test_select_ohlcv2() {
-        let db_name = db_full_path("FTX", "BTC-PERP");
-
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
-
-        let start = NOW();
-        let ohlcv = db.select_ohlcvv2(0, 0, 6000);
-
-        println!("{:?} / {} microsec", ohlcv, NOW() - start);
-    }
 
     #[test]
-    fn test_select_ohlcv3() {
+    fn test_select_print() {
         init_log();
 
         let db_name = db_full_path("FTX", "BTC-PERP");
@@ -734,20 +707,6 @@ mod test_transaction_table {
         let ohlcv = db.select(0, 0, |_trade| {});
 
         println!("{:?} / {} microsec", ohlcv, NOW() - start);
-    }
-
-    #[test]
-    fn test_select_ohlcv4() {
-        init_log();
-
-        let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
-
-        let start = NOW();
-        let ohlcv = db.select_ohclv_df(0, 0, 10);
-
-        println!("{:?}", ohlcv);
-        println!("{} microsec", NOW() - start);
     }
 
     #[test]

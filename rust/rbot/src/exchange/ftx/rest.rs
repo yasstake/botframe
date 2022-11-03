@@ -1,4 +1,4 @@
-use crate::common::order::Trade;
+use crate::common::order::{Trade, TimeChunk};
 use crate::common::time::{time_string, to_seconds, MicroSec, DAYS, HHMM, NOW, MICRO_SECOND};
 use crate::db::sqlite::TradeTable;
 use crate::exchange::ftx::message::FtxTradeMessage;
@@ -124,6 +124,17 @@ pub fn download_trade_callback_ndays<F>(
     download_trade_callback(market_name, start_time, end_time, f)
 }
 
+pub fn download_trade_chunks_callback<F>(
+    market_name:& str, 
+    chunk: &Vec<TimeChunk>,
+    mut f: F,
+)where
+    F: FnMut(Vec<Trade>)
+{
+    for ch in chunk {
+        download_trade_callback(market_name, ch.start, ch.end, &mut f);
+    }
+}
 
 pub fn download_trade_callback<F>(
     market_name: &str,
@@ -131,8 +142,10 @@ pub fn download_trade_callback<F>(
     mut end_time: MicroSec,
     mut f: F,
 ) where
-    F: FnMut(Vec<Trade>),
+F: FnMut(Vec<Trade>),
 {
+    log::debug!("download trade call back start_time {} -> end_time {}", time_string(start_time), time_string(end_time));
+
     loop {
         let timer_start = NOW();
 
@@ -163,12 +176,15 @@ pub fn download_trade_callback<F>(
 
 
 fn check_skip_time(mut trades: &Vec<Trade>) {
+    /*
     let mut last_time: MicroSec = 0;
     let mut last_id: String = "".to_string();
 
     for t in trades {
         if last_time != 0 {
-            if 1 * MICRO_SECOND < t.time - last_time {
+            if 5 * MICRO_SECOND < t.time - last_time ||
+                t.time - last_time < - 5 * MICRO_SECOND
+            {
                 log::debug!("SKIP {} / {:?}", t.time-last_time, t);
             }
         }
@@ -180,6 +196,7 @@ fn check_skip_time(mut trades: &Vec<Trade>) {
         last_time = t.time;
         last_id = t.id.clone();
     }
+    */
 }
 
 
@@ -298,7 +315,6 @@ mod test_ftx_client {
 
         download_trade_callback(BTCMARKET, from_time, to_time, |trade| db.insert_records(&trade).expect("inserterror"));
     }
-
 
 
     #[test]
