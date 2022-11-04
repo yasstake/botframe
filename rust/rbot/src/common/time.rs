@@ -25,10 +25,22 @@ pub fn to_naivedatetime(microsecond: MicroSec) -> NaiveDateTime {
 pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     let unit_sec_micro = SEC(unit_sec);
 
-    let floor = (microsecond / unit_sec_micro) * unit_sec_micro;
+    let floor = ((microsecond / unit_sec_micro) as i64) * unit_sec_micro;
 
     return floor;
 }
+
+#[allow(non_snake_case)]
+pub fn CEIL(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
+    let unit_sec_micro = SEC(unit_sec);
+
+    let floor = (((microsecond+unit_sec_micro-1) / unit_sec_micro as i64)) * unit_sec_micro;
+
+    return floor;
+}
+
+
+
 
 #[pyfunction]
 pub fn time_string(t: MicroSec) -> String {
@@ -122,10 +134,19 @@ mod time_test {
 
     #[test]
     fn test_FLOOR() {
+        assert_eq!(        0, FLOOR(  999_999, 1));                
+        assert_eq!(1_000_000, FLOOR(1_000_000, 1));        
         assert_eq!(1_000_000, FLOOR(1_000_111, 1));
         assert_eq!(10_000_000, FLOOR(10_123_111, 10));        
         assert_eq!(10_000_000, FLOOR(19_123_111, 10));                
         assert_eq!(20_000_000, FLOOR(29_123_111, 10));                        
+    }
+
+    #[test]
+    fn test_CEIL() {
+        assert_eq!(1_000_000, CEIL(  999_999, 1));                
+        assert_eq!(1_000_000, CEIL(1_000_000, 1));
+        assert_eq!(2_000_000, CEIL(1_000_001, 1));        
     }
 
 

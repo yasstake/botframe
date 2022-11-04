@@ -40,6 +40,7 @@ pub mod KEY {
     pub const buy_count: &str = "buy_count";
     pub const start_time: &str = "start_time";
     pub const end_time: &str = "end_time";
+    pub const count: &str = "count";
 }
 
 /// Cutoff from_time to to_time(not include)
@@ -98,7 +99,7 @@ pub fn ohlcv_df(
     return df
         .lazy()
         .groupby_dynamic(
-            vec![],
+            [col(KEY::order_side)],
             DynamicGroupOptions {
                 index_column: KEY::time_stamp.into(),
                 every: Duration::new(SEC(time_window)), // グループ間隔
@@ -115,6 +116,7 @@ pub fn ohlcv_df(
             col(KEY::price).min().alias(KEY::low),
             col(KEY::price).last().alias(KEY::close),
             col(KEY::size).sum().alias(KEY::vol),
+            col(KEY::price).count().alias(KEY::count)
         ])
         .sort(
             KEY::time_stamp,
@@ -127,19 +129,48 @@ pub fn ohlcv_df(
         .unwrap();
 }
 
-/*
-fn convert_datetime_vec(t: Vec<f64>) -> Vec<NaiveDateTime> {
-    //        let datetime: Vec<NaiveDateTime> =
-            let datetime =
-                t.iter()
-                .map(|x|
-                    NaiveDateTime::from_timestamp((*x as MicroSec) / MICRO_SECOND,
-                   (( (*x as MicroSec) % MICRO_SECOND) * 1_000) as u32).try_into().unwrap()) // sec, nano_sec
-                .collect();
 
-            return datetime;
+pub fn ohlcv_from_ohlcv_df(
+    df: &DataFrame,
+    start_time: MicroSec,
+    end_time: MicroSec,
+    time_window: i64,
+) -> DataFrame {
+    let df = select_df(df, start_time, end_time);
+
+    return df
+        .lazy()
+        .groupby_dynamic(
+            [col(KEY::order_side)],
+            DynamicGroupOptions {
+                index_column: KEY::time_stamp.into(),
+                every: Duration::new(SEC(time_window)), // グループ間隔
+                period: Duration::new(SEC(time_window)), // データ取得の幅（グループ間隔と同じでOK)
+                offset: Duration::parse("0m"),
+                truncate: true,            // タイムスタンプを切り下げてまとめる。
+                include_boundaries: false, // データの下限と上限を結果に含めるかどうか？(falseでOK)
+                closed_window: ClosedWindow::Left, // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
+            },
+        )
+        .agg([
+            col(KEY::open).first().alias(KEY::open),
+            col(KEY::high).max().alias(KEY::high),
+            col(KEY::low).min().alias(KEY::low),
+            col(KEY::close).last().alias(KEY::close),
+            col(KEY::vol).sum().alias(KEY::vol),
+            col(KEY::count).count().alias(KEY::count)
+        ])
+        .sort(
+            KEY::time_stamp,
+            SortOptions {
+                descending: false,
+                nulls_last: false,
+            },
+        )
+        .collect()
+        .unwrap();
 }
-*/
+
 
 ///
 /// SQL DBには、Tickデータを保存する。
@@ -214,7 +245,7 @@ impl OhlcvBuffer {
         self.end_time.push(trade.end_time);
     }
 
-    /// TODO: 文字列の定義
+
     pub fn to_dataframe(&self) -> DataFrame {
         let time = Series::new(KEY::time_stamp, self.time.to_vec());
         let open = Series::new(KEY::open, self.open.to_vec());

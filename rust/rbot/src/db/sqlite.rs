@@ -3,12 +3,12 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use crate::common::order::{TimeChunk, Trade};
-use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, MICRO_SECOND, NOW, DAYS};
+use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, CEIL, MICRO_SECOND, NOW, DAYS};
 use crate::OrderSide;
 use polars::prelude::DataFrame;
 use rusqlite::{params, params_from_iter, Connection, Error, Result};
 
-use super::df::{OhlcvBuffer, merge_df};
+use super::df::{OhlcvBuffer, merge_df, ohlcv_from_ohlcv_df};
 use crate::db::df::TradeBuffer;
 use crate::db::df::ohlcv_df;
 use crate::db::df::start_time_df;
@@ -113,18 +113,35 @@ fn check_skip_time(mut trades: &Vec<Trade>) {
 
 pub struct TradeTable {
     connection: Connection,
-    cache_df: DataFrame
+    cache_df: DataFrame,
+    cache_ohlcv: DataFrame,
 }
 
 impl TradeTable {
+    const OHLCV_WINDOW_SEC: i64 = 60;        // min
+
+    pub fn OhlcvStart(t: MicroSec) -> MicroSec {
+        return FLOOR(t, TradeTable::OHLCV_WINDOW_SEC);
+    }
+
+
+    pub fn OhlcvEnd(t: MicroSec) -> MicroSec {
+        return CEIL(t, TradeTable::OHLCV_WINDOW_SEC);
+    }
+
+
     pub fn open(name: &str) -> Result<Self, Error> {
         let result = Connection::open(name);
 
         match result {
             Ok(conn) => {
+                let df = TradeBuffer::new().to_dataframe();
+                let ohlcv = ohlcv_df(&df, 0, 0, TradeTable::OHLCV_WINDOW_SEC);
+
                 return Ok(TradeTable { 
                     connection: conn,
-                    cache_df: TradeBuffer::new().to_dataframe()
+                    cache_df: df,
+                    cache_ohlcv: ohlcv
                 })
             },
             Err(e) => {
@@ -233,14 +250,20 @@ impl TradeTable {
         match start_time_df(&self.cache_df) {
             Some(t) => {df_start_time = t;}
             _ => {
+                log::debug!("cache update all {} -> {}", time_string(from_time), time_string(to_time));
                 // no cache / update all
                 self.load_df(from_time, to_time);
+
+                // update ohlcv
+                self.cache_ohlcv = ohlcv_df(&self.cache_df, TradeTable::OhlcvStart(from_time), to_time, TradeTable::OHLCV_WINDOW_SEC);
                 return;
             }
         }
 
         let mut df_end_time = end_time_df(&self.cache_df).unwrap();
 
+        /*
+        TODO: realtime モードのときだけ削除するように変更。
         // delete cache
         if df_start_time + DAYS(7) < from_time || to_time + DAYS(7) < df_end_time {
             log::debug!("delete cache");
@@ -248,6 +271,7 @@ impl TradeTable {
             df_start_time = start_time_df(&self.cache_df).unwrap();
             df_end_time = end_time_df(&self.cache_df).unwrap();
         }
+        */
 
         // load data and merge cache
         if from_time < df_start_time {
@@ -255,6 +279,15 @@ impl TradeTable {
 
             log::debug!("load data before cache df1={:?} df2={:?}", df1.shape(), self.cache_df.shape());
             self.cache_df = merge_df(&self.select_df(from_time, df_start_time), &self.cache_df);
+
+
+            // update ohlcv
+            let ohlcv_start = TradeTable::OhlcvStart(from_time);
+            let ohlcv_end = TradeTable::OhlcvEnd(df_start_time);
+
+            log::debug!("cache update diff before {} -> {}", time_string(ohlcv_start), time_string(ohlcv_end));
+            let ohlcv = ohlcv_df(&self.cache_df, ohlcv_start, ohlcv_end, TradeTable::OHLCV_WINDOW_SEC);
+            self.cache_ohlcv = merge_df(&ohlcv, &self.cache_ohlcv);
         }
 
         if df_end_time < to_time {
@@ -262,16 +295,51 @@ impl TradeTable {
 
             log::debug!("load data AFTER cache df1={:?} df2={:?}", self.cache_df.shape(), df2.shape());
             self.cache_df = merge_df(&self.cache_df, &df2);
+
+            // update ohlcv
+            let ohlcv_start = TradeTable::OhlcvStart(from_time);
+
+            log::debug!("cache update diff after {} -> {}", time_string(ohlcv_start), time_string(to_time));
+            let ohlcv = ohlcv_df(&self.cache_df, ohlcv_start, to_time, TradeTable::OHLCV_WINDOW_SEC);
+            self.cache_ohlcv = merge_df(&self.cache_ohlcv, &ohlcv);                        
         }
     }
 
     pub fn ohlcv_df(&mut self, from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> DataFrame {
         self.update_cache_df(from_time, to_time);
 
-        return ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec);
+        if time_window_sec % TradeTable::OHLCV_WINDOW_SEC == 0 {
+            return ohlcv_from_ohlcv_df(&self.cache_ohlcv, from_time, to_time, time_window_sec);
+        }
+        else {
+            return ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec);
+        }
+    }
+
+    pub fn ohlcv_array(&mut self, from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> ndarray::Array2<f64> {
+        let df = self.ohlcv_df(from_time, to_time, time_window_sec);
+
+        let array: ndarray::Array2<f64> = df
+            .select(&[
+                KEY::time_stamp,
+                KEY::order_side,
+                KEY::open,
+                KEY::high,
+                KEY::low,
+                KEY::close,
+                KEY::vol,
+                KEY::count
+            ])
+            .unwrap()
+            .to_ndarray::<Float64Type>()
+            .unwrap();
+
+        array
     }
 
     pub fn select_array(&mut self, from_time: MicroSec, to_time: MicroSec) -> ndarray::Array2<f64> {
+        self.update_cache_df(from_time, to_time);
+
         let trades = self.select_df(from_time, to_time);
 
         let array: ndarray::Array2<f64> = trades
@@ -535,6 +603,7 @@ mod test_transaction_table {
     use crate::common::time::MICRO_SECOND;
     use crate::common::time::NOW;
     use crate::fs::db_full_path;
+    use crate::db::df::ohlcv_from_ohlcv_df;
 
     use super::*;
 
@@ -675,24 +744,37 @@ mod test_transaction_table {
 
         let start_timer = NOW();
         let now = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), now, 120);
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), now, 1);
         println!("{:?}", ohlcv);
         println!("{} [us]", NOW()-start_timer);
         
         let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
         println!("{:?}", ohlcv);
         println!("{} [us]", NOW()-start_timer);
 
         let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
         println!("{:?}", ohlcv);
         println!("{} [us]", NOW()-start_timer);
 
         let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(10), NOW(), 120);
+        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
         println!("{:?}", ohlcv);
         println!("{} [us]", NOW()-start_timer);
+
+        let start_timer = NOW();
+        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW()-DAYS(50), NOW(), 120);
+        println!("{:?}", ohlcv2);
+        println!("{} [us]", NOW()-start_timer);
+
+        let start_timer = NOW();
+        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW()-DAYS(1), NOW(), 60);
+        println!("{:?}", ohlcv2);
+        println!("{} [us]", NOW()-start_timer);
+
+
+
     }
 
 
@@ -781,6 +863,14 @@ mod test_transaction_table {
         println!("{:?}", df);
     }
 
-    // 10秒以上間があいている場所の検出SQL
-    // select time_stamp, sub_time from(select time_stamp, time_stamp - lag(time_stamp, 1, 0) OVER (order by time_stamp) sub_time  from trades order by time_stamp) where sub_time > 100000000;
+
+    #[test]
+    fn test_update_cache() {
+        init_log();
+        let db_name = db_full_path("FTX", "BTC-PERP");
+        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+
+        db.update_cache_df(NOW()-DAYS(1), NOW());
+    }
+
 }

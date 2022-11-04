@@ -79,7 +79,7 @@ impl Trade {
     }
 
     pub fn to_csv(&self) -> String {
-        format!("{}, {}, {}, {}, {}, {}\n", self.time, self.price, self.size, self.order_side, self.liquid, self.id)
+        format!("{:?}, {:?}, {:?}, {:?}, {:?}, {:?}\n", self.time, self.price, self.size, self.order_side, self.liquid, self.id)
     }
 }
 

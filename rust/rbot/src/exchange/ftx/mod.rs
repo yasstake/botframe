@@ -37,12 +37,11 @@ use numpy::PyArray2;
 
 
 
-#[pyclass]
+#[pyclass(name="_FtxMarket")]
 pub struct FtxMarket {
     name: String,
     pub dummy: bool,
     db: TradeTable,
-    df: DataFrame,
 }
 
 
@@ -59,7 +58,6 @@ impl FtxMarket {
             name: market_name.to_string(),
             dummy,
             db,
-            df: TradeBuffer::new().to_dataframe(),
         }
     }
 
@@ -108,6 +106,8 @@ impl FtxMarket {
         return self.db.info();
     }
 
+    ///
+    /// TODO: 本体は共通部としてDBクラスへ移動する。
     pub fn select_trades(&mut self, from_time: MicroSec, to_time: MicroSec) -> PyResult<Py<PyArray2<f64>>> {
         let array = self.db.select_array(from_time, to_time);
 
@@ -121,8 +121,19 @@ impl FtxMarket {
         return Ok(r);
     }
 
-    pub fn load_to_df(&mut self, from_time: MicroSec, to_time: MicroSec) {
-        self.df = self.db.select_df(from_time, to_time);
+    /// TODO: ohlcv_secにするかもー。
+    /// TODO: 本体は共通部としてDBクラスへ移動する。
+    pub fn ohlcvv(&mut self, from_time: MicroSec, to_time: MicroSec, window_sec: i64) -> PyResult<Py<PyArray2<f64>>> {
+        let array = self.db.ohlcv_array(from_time, to_time, window_sec);
+
+        let r = Python::with_gil(|py| {
+
+            let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+
+            return py_array2.to_owned();
+        });    
+
+        return Ok(r);
     }
 }
 
@@ -144,19 +155,4 @@ mod test_exchange_ftx{
 
         ftx.load_log(60, false);
     }
-
-
-    #[test]
-    fn test_load_to_df() {
-        let mut ftx = FtxMarket::new("BTC-PERP", true);
-
-        ftx.load_to_df(NOW()-DAYS(1), 0);
-
-        println!("{:?}", ftx.df);
-
-        let ohlcv = ohlcv_df(&ftx.df, 0, 0, 10);
-
-        println!("{:?}", ohlcv);
-    }
-
 }
