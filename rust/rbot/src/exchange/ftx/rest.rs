@@ -11,6 +11,8 @@ const FTX_REST_ENDPOINT: &str = "https://ftx.com/api";
 
 const BTCMARKET: &str = "BTC-PERP";
 
+// TODO: RESTAPIのエラー処理（取引所エラー）対応。
+
 /*
 pub fn download_trade_ndays_channel(
     market_name: &str,

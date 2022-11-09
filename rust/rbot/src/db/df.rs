@@ -1,5 +1,5 @@
 use crate::common::order::Trade;
-use crate::common::time::{to_naivedatetime, MicroSec, MICRO_SECOND, NANO_SECOND, SEC};
+use crate::common::time::{to_naivedatetime, MicroSec, MICRO_SECOND, NANO_SECOND, SEC, time_string};
 use chrono::NaiveDateTime;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
@@ -45,6 +45,7 @@ pub mod KEY {
 
 /// Cutoff from_time to to_time(not include)
 pub fn select_df(df: &DataFrame, from_time: MicroSec, to_time: MicroSec) -> DataFrame {
+    log::debug!("Select from {} -> {}", time_string(from_time), time_string(to_time));
     if from_time == 0 && to_time == 0 {
         log::debug!("preserve select df");
         return df.clone();
@@ -136,6 +137,7 @@ pub fn ohlcv_from_ohlcv_df(
     end_time: MicroSec,
     time_window: i64,
 ) -> DataFrame {
+    log::debug!("ohlc {:?} -> {:?}", time_string(start_time), time_string(end_time));
     let df = select_df(df, start_time, end_time);
 
     return df
@@ -158,7 +160,7 @@ pub fn ohlcv_from_ohlcv_df(
             col(KEY::low).min().alias(KEY::low),
             col(KEY::close).last().alias(KEY::close),
             col(KEY::vol).sum().alias(KEY::vol),
-            col(KEY::count).count().alias(KEY::count)
+            col(KEY::count).sum().alias(KEY::count)
         ])
         .sort(
             KEY::time_stamp,

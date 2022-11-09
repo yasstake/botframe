@@ -1,4 +1,3 @@
-
 // use crate::common::order::MarketType;
 use crate::common::order::Order;
 use crate::common::order::OrderResult;
@@ -8,10 +7,68 @@ use crate::common::order::OrderStatus;
 use crate::sim::market::OrderQueue;
 
 // use crate::sim::market::Position;
+use crate::common::time::MicroSec;
 use crate::sim::market::Positions;
 
+use numpy::PyArray2;
+use pyo3::exceptions::PyTypeError;
+use pyo3::prelude::Py;
+use pyo3::prelude::pymethods;
+use pyo3::prelude::pyclass;
+use crate::db::sqlite::TradeTable;
 
+use pyo3::*;
+use crate::{MICRO_SECOND, SEC};
 
+/*
+pub trait Session {
+    ///　現在のセッション時間をusで取得する。
+    fn get_timestamp(&mut self) -> MicroSec;
+    fn make_order(
+        &mut self,
+        timestamp: i64,
+        side: OrderSide,
+        price: f64,
+        size: f64,
+        duration_ms: i64,
+        message: String,
+    ) -> Result<(), OrderStatus>;
+
+    ///　 直近の約定から想定される売り板の最安値（Best Ask価格）を取得する。
+    fn get_sell_edge_price(&self) -> f64;
+
+    ///　 直近の約定から想定される買い板の最高値（Best Bit価格）を取得する。
+    fn get_buy_edge_price(&self) -> f64;
+
+    /// 未約定でキューに入っているlong orderのサイズ（合計）
+    fn get_long_order_size(&self) -> f64;
+
+    ///　未約定のlong order一覧
+    fn get_long_orders(&self) -> Vec<Order>;
+
+    /// 未約定でキューに入っているshort orderのサイズ（合計）
+    fn get_short_order_size(&self) -> f64;
+
+    ///　未約定のshort order一覧
+    fn get_short_orders(&self) -> Vec<Order>;
+
+    /// longポジションのサイズ（合計）
+    fn get_long_pos_size(&self) -> f64;
+
+    /// longポジションのサイズ（合計）
+    fn get_long_position_size(&self) -> f64;
+
+    /// shortポジションのサイズ（合計）
+    fn get_short_position_size(&self) -> f64;
+
+    /*
+    /// 現在時刻から width_sec　幅で, count個 OHLCVバーを作る。
+    /// Index=0が最新。バーの幅の中にデータが欠落する場合はバーが欠落する（countより少なくなる）
+    /// またバーの幅が小さく、バーの数も少ない場合はバーが生成できるエラになる。
+    fn ohlcvv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>>;
+    */
+}
+*/
 
 ///
 /// オーダー処理の基本
@@ -36,12 +93,16 @@ use crate::sim::market::Positions;
 ///     オーダーIDをつくり、返却
 ///
 
+#[pyclass(name="_DummySession")]
 #[derive(Clone, Debug)]
-pub struct SessionValue {
+pub struct DummySession {
     _order_index: i64,
+    #[pyo3(get)]    
     pub sell_board_edge_price: f64, // best ask price　買う時の価格
+    #[pyo3(get)]    
     pub buy_board_edge_price: f64,  // best bit price 　売る時の価格
-    pub current_time_ms: i64,
+    #[pyo3(get)]    
+    pub current_timestamp: i64,
     pub long_orders: OrderQueue,
     pub short_orders: OrderQueue,
     pub positions: Positions,
@@ -50,13 +111,15 @@ pub struct SessionValue {
     pub wallet_balance: f64, // 入金額
 }
 
-impl SessionValue {
+#[pymethods]
+impl DummySession {
+    #[new]
     pub fn new() -> Self {
-        return SessionValue {
+        return DummySession {
             _order_index: 0,
             sell_board_edge_price: 0.0,
             buy_board_edge_price: 0.0,
-            current_time_ms: 0,
+            current_timestamp: 0,
             long_orders: OrderQueue::new(true),
             short_orders: OrderQueue::new(false),
             positions: Positions::new(),
@@ -66,6 +129,7 @@ impl SessionValue {
         };
     }
 
+    #[getter]
     pub fn get_center_price(&self) -> f64 {
         if self.buy_board_edge_price == 0.0 || self.sell_board_edge_price == 0.0 {
             return 0.0;
@@ -74,12 +138,137 @@ impl SessionValue {
         return (self.buy_board_edge_price + self.sell_board_edge_price) / 2.0;
     }
 
+    #[getter]
     // TODO: 計算する。
     pub fn get_avairable_balance(&self) -> f64 {
         assert!(false, "not implemnted");
         return 0.0;
     }
 
+    /*
+    ///　 直近の約定から想定される売り板の最安値（Best Ask価格）を取得する。
+    #[getter]
+    fn get_sell_edge_price(&self) -> f64 {
+        return self.sell_board_edge_price;
+    }
+
+    ///　 直近の約定から想定される買い板の最高値（Best Bit価格）を取得する。
+    #[getter]
+    fn get_buy_edge_price(&self) -> f64 {
+        return self.buy_board_edge_price;
+    }
+    */
+
+    /// 未約定でキューに入っているlong orderのサイズ（合計）
+    #[getter]    
+    fn get_long_order_size(&self) -> f64 {
+        return self.long_orders.get_size();
+    }
+
+    ///　未約定のlong order一覧
+    #[getter]    
+    fn get_long_orders(&self) -> Vec<Order> {
+        return self.long_orders.get_q();
+    }
+
+    /// 未約定でキューに入っているshort orderのサイズ（合計）
+    #[getter]    
+    fn get_short_order_size(&self) -> f64 {
+        return self.short_orders.get_size();
+    }
+
+    ///　未約定のshort order一覧
+    #[getter]
+    fn get_short_orders(&self) -> Vec<Order> {
+        return self.short_orders.get_q();
+    }
+
+    /// longポジションのサイズ（合計）
+    #[getter]
+    fn get_long_pos_size(&self) -> f64{
+        return self.positions.get_long_position_size()
+    }
+
+    /// shortポジションのサイズ（合計）
+    #[getter]
+    fn get_short_position_size(&self) -> f64 {
+        return self.positions.get_short_position_size();
+    }
+
+    fn run(&mut self) {
+        self.main_exec_event(1, OrderSide::Buy, 10.0, 20.0);
+        self.main_exec_event(2, OrderSide::Buy, 11.0, 20.0);
+        self.main_exec_event(3, OrderSide::Buy, 12.0, 20.0);                
+    }
+    /*
+    /// 現在時刻から width_sec　幅で, count個 OHLCVバーを作る。
+    /// Index=0が最新。バーの幅の中にデータが欠落する場合はバーが欠落する（countより少なくなる）
+    /// またバーの幅が小さく、バーの数も少ない場合はバーが生成できるエラになる。
+    fn ohlcvv(&mut self, width_sec: i64, count: i64) -> Py<PyArray2<f64>> {
+        return self.db.ohlcvv(width_sec, count);
+    }
+    */
+    /// オーダー作りオーダーリストへ追加する。
+    /// 最初にオーダー可能かどうか確認する（余力の有無）
+    fn make_order(
+        &mut self,
+        mut timestamp: i64,
+        side: OrderSide,
+        price: f64,
+        size: f64,
+        duration_sec: i64,
+        message: String,
+    ) -> PyResult<OrderStatus> {
+        // TODO: 発注可能かチェックする
+
+        /*
+        if 証拠金不足
+            return Err(OrderStatus::NoMoney);
+        */
+
+        if timestamp == 0 {
+            timestamp = self.current_timestamp;
+        }
+
+        let order_id = self.generate_id();
+        let order = Order::new(
+            timestamp,
+            order_id,
+            side,
+            true,
+            self.current_timestamp + SEC(duration_sec),
+            price,
+            size,
+            message,
+        );
+
+        // TODO: enqueue の段階でログに出力する。
+
+        match side {
+            OrderSide::Buy => {
+                // TODO: Takerになるかどうか確認
+                self.long_orders.queue_order(&order);
+                return Ok(OrderStatus::InOrder);
+            }
+            OrderSide::Sell => {
+                self.short_orders.queue_order(&order);
+                return Ok(OrderStatus::InOrder);
+            }
+            _ => {
+                println!("Unknown order type {:?} / use B or S", side);
+            }
+        }
+
+        return Err(PyTypeError::new_err("Order fail"));
+    }
+}
+
+
+
+
+
+
+impl DummySession {
     /// price x sizeのオーダを発行できるか確認する。
     ///   if unrealised_pnl > 0:
     ///      available_balance = wallet_balance - (position_margin + occ_closing_fee + occ_funding_fee + order_margin)
@@ -112,14 +301,14 @@ impl SessionValue {
 
     ///
     ///  
-    fn exec_event_update_time(
+    pub fn exec_event_update_time(
         &mut self,
         current_time_ms: i64,
         order_type: OrderSide,
         price: f64,
         _size: f64,
     ) {
-        self.current_time_ms = current_time_ms;
+        self.current_timestamp = current_time_ms;
 
         //  ２。マーク価格の更新。ログとはエージェント側からみるとエッジが逆になる。
         match order_type {
@@ -142,7 +331,7 @@ impl SessionValue {
     /// オーダの期限切れ処理を行う。
     /// エラーは返すが、エラーが通常のため処理する必要はない。
     /// 逆にOKの場合のみ、上位でログ処理する。
-    fn exec_event_expire_order(
+    pub fn exec_event_expire_order(
         &mut self,
         current_time_ms: i64,
     ) -> Result<OrderResult, OrderStatus> {
@@ -235,7 +424,7 @@ impl SessionValue {
     // TODO: この中でAgentへコールバックできるか調査
     fn log_order_result(&mut self, order: &OrderResult) {
         let mut order_result = order.clone();
-        order_result.update_time = self.current_time_ms;
+        order_result.update_time = self.current_timestamp;
 
         self.calc_profit(&mut order_result);
 
@@ -252,7 +441,7 @@ impl SessionValue {
     fn calc_profit(&self, order: &mut OrderResult) {
         if order.status == OrderStatus::OpenPosition || order.status == OrderStatus::ClosePosition {
             let fee_rate = 0.0001;
-                order.fee = order.home_size * fee_rate;
+            order.fee = order.home_size * fee_rate;
             order.total_profit = order.profit - order.fee;
         }
     }
@@ -305,106 +494,20 @@ impl SessionValue {
 
         return &self.tick_order_history;
     }
-}
 
-pub trait Session {
-    fn get_timestamp_ms(&mut self) -> i64;
-    fn make_order(
-        &mut self,
-        timestamp: i64,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        duration_ms: i64,
-        message: String,
-    ) -> Result<(), OrderStatus>;
 
-    /*
-    fn get_active_orders(&self) -> [Order];
-    fn get_posision(&self) -> (Position, Position); // long/short
-    fn diposit(&self, balance: f64);
-    fn get_balance(&self) -> f64;
-    fn get_avairable_balance(&self) -> f64;
-    fn set_indicator(&self, key: &str, value: f64); // TODO: implement laterd
-    fn result() -> String; // evaluate session result
-    fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64) -> SessionEventType;
-    */
-    // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
-}
-
-impl Session for SessionValue {
-    fn get_timestamp_ms(&mut self) -> i64 {
-        return self.current_time_ms;
-    }
-    /// オーダー作りオーダーリストへ追加する。
-    /// 最初にオーダー可能かどうか確認する（余力の有無）
-    fn make_order(
-        &mut self,
-        mut timestamp: i64,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        duration_ms: i64,
-        message: String,
-    ) -> Result<(), OrderStatus> {
-        // TODO: 発注可能かチェックする
-
-        /*
-        if 証拠金不足
-            return Err(OrderStatus::NoMoney);
-        */
-
-        if timestamp == 0 {
-            timestamp = self.current_time_ms;
-        }
-
-        let order_id = self.generate_id();
-        let order = Order::new(
-            timestamp,
-            order_id,
-            side,
-            true,
-            self.current_time_ms + duration_ms,
-            price,
-            size,
-            message,
-        );
-
-        // TODO: enqueue の段階でログに出力する。
-
-        match side {
-            OrderSide::Buy => {
-                // TODO: Takerになるかどうか確認
-                self.long_orders.queue_order(&order);
-                return Ok(());
-            }
-            OrderSide::Sell => {
-                self.short_orders.queue_order(&order);
-                return Ok(());
-            }
-            _ => {
-                println!("Unknown order type {:?} / use B or S", side);
-            }
-        }
-
-        return Err(OrderStatus::Error);
+    fn get_timestamp(&mut self) -> MicroSec {
+        return self.current_timestamp;
     }
 
-    /*
-        fn make_order(&self, side: &str, price: f64, volume: f64, duration_ms: i64) -> Order;
-        fn get_active_orders(&self) -> [Order];
-        fn get_posision(&self) -> (Position, Position);     // long/short
-        fn set_balance(&self, balance: f64);
-        fn get_balance(&self) -> f64;
-        fn set_indicator(&self, key: &str, value: f64);     // TODO: implement later
-        fn result() -> String;                              // evaluate session result
-        fn on_exec(&self, session: &Market, time_ms: i64, action: &str, price: f64, size: f64);
-        // fn run(&self, agent: &dyn Agent, from_time_ms: i64, time_interval_ms: i64) -> bool;
-        // fn ohlcv(&mut self, width_sec: i64, count: i64) -> ndarray::Array2<f64>;
-    */
+
+
+
 }
 
-
+///////////////////////////////////////////////////////////////////////
+// TEST Suite
+///////////////////////////////////////////////////////////////////////
 
 #[allow(unused_results)]
 #[cfg(test)]
@@ -412,12 +515,14 @@ mod test_session_value {
     use super::*;
     #[test]
     fn test_new() {
-        let _session = SessionValue::new();
+        let db = TradeTable::open("BTC-PERP").unwrap();
+        let _session = DummySession::new();
     }
 
     #[test]
     fn test_session_value() {
-        let mut session = SessionValue::new();
+        let db = TradeTable::open("BTC-PERP").unwrap();        
+        let mut session = DummySession::new();
 
         // IDの生成テスト
         // self.generate_id
@@ -427,7 +532,7 @@ mod test_session_value {
         println!("{}", id);
 
         //
-        let current_time = session.get_timestamp_ms();
+        let current_time = session.get_timestamp();
         println!("{}", current_time);
 
         // test center price
@@ -441,19 +546,19 @@ mod test_session_value {
         assert_eq!(session.get_center_price(), 200.0);
     }
 
-
     #[test]
     fn test_event_update_time() {
-        let mut session = SessionValue::new();
-        assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
+        let db = TradeTable::open("BTC-PERP").unwrap();        
+        let mut session = DummySession::new();
+        assert_eq!(session.get_timestamp(), 0); // 最初は０
 
         session.exec_event_update_time(123, OrderSide::Buy, 101.0, 10.0);
-        assert_eq!(session.get_timestamp_ms(), 123);
+        assert_eq!(session.get_timestamp(), 123);
         //assert_eq!(session.sell_board_edge_price, 101.0); // Agent側からみるとsell_price
         assert_eq!(session.get_center_price(), 0.0); // 初期化未のときは０
 
         session.exec_event_update_time(135, OrderSide::Sell, 100.0, 10.0);
-        assert_eq!(session.get_timestamp_ms(), 135);
+        assert_eq!(session.get_timestamp(), 135);
         //assert_eq!(session.sell_board_edge_price, 101.0);
         // assert_eq!(session.buy_board_edge_price, 100.0); // Agent側からみるとbuy_price
         assert_eq!(session.get_center_price(), 100.5); // buyとSellの中間
@@ -461,7 +566,8 @@ mod test_session_value {
 
     #[test]
     fn test_exec_event_execute_order0() {
-        let mut session = SessionValue::new();
+        let db = TradeTable::open("BTC-PERP").unwrap();
+        let mut session = DummySession::new();
 
         let _r = session.make_order(0, OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
@@ -479,7 +585,8 @@ mod test_session_value {
 
     #[test]
     fn test_update_position() {
-        let mut session = SessionValue::new();
+        let db = TradeTable::open("BTC-PERP").unwrap();        
+        let mut session = DummySession::new();
 
         // 新規にポジション作る（ロング）
         let _r = session.make_order(0, OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
@@ -537,8 +644,9 @@ mod test_session_value {
 
     #[test]
     fn test_exec_event_execute_order() {
-        let mut session = SessionValue::new();
-        assert_eq!(session.get_timestamp_ms(), 0); // 最初は０
+        let db = TradeTable::open("BTC-PERP").unwrap();        
+        let mut session = DummySession::new();
+        assert_eq!(session.get_timestamp(), 0); // 最初は０
 
         // Warm Up
         session.main_exec_event(1, OrderSide::Sell, 150.0, 150.0);

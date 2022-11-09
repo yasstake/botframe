@@ -12,6 +12,7 @@ pub enum OrderSide {
     Unknown,
 }
 
+
 impl OrderSide {
     pub fn from_str(order_type: &str) -> Self {
         match order_type.to_uppercase().as_str() {
@@ -49,8 +50,6 @@ impl OrderSide {
         }
     }
 
-
-
 }
 
 // Represent one Trade execution.
@@ -58,28 +57,37 @@ impl OrderSide {
 #[derive(Debug)]
 pub struct Trade {
     pub time: MicroSec,
+    pub order_side: OrderSide,
     pub price: f64,
     pub size: f64,
-    pub order_side: OrderSide,
     pub liquid: bool,
     pub id: String,
 }
 
-
+#[pymethods]
 impl Trade {
-    pub fn new(time_microsec: MicroSec, price: f64, size: f64, order_side: OrderSide, liquid: bool, id: String) -> Self{
+    #[new]
+    pub fn new(time_microsec: MicroSec, order_side: OrderSide, price: f64, size: f64, liquid: bool, id: String) -> Self{
         return Trade {
             time: time_microsec,
+            order_side,
             price,
             size,
-            order_side,
             liquid,
             id
         }
     }
 
     pub fn to_csv(&self) -> String {
-        format!("{:?}, {:?}, {:?}, {:?}, {:?}, {:?}\n", self.time, self.price, self.size, self.order_side, self.liquid, self.id)
+        format!("{:?}, {:?}, {:?}, {:?}, {:?}, {:?}\n", self.time, self.order_side, self.price, self.size, self.liquid, self.id)
+    }
+
+    pub fn __str__(&self) -> String {
+        format!("{{timestamp:{:?}, order_side:{:?}, price:{:?}, size:{:?}, liquid:{:?}, id:{:?}}}", self.time, self.order_side, self.price, self.size, self.liquid, self.id)        
+    }
+    
+    pub fn __repr__(&self) -> String{
+        return self.__str__();
     }
 }
 
@@ -98,7 +106,9 @@ pub struct Order {
     pub remain_size: f64, // ログから想定した未約定数。０になったら全部約定。
 }
 
+#[pymethods]
 impl Order {
+    #[new]
     pub fn new(
         create_time: MicroSec, // in ns
         order_id: String,     // YYYY-MM-DD-SEQ
@@ -121,6 +131,24 @@ impl Order {
             message,
             remain_size: size,
         };
+    }
+
+    pub fn __str__(&self) -> String {
+        return format!("{{order_index:{}, create_time:{}, order_id:{}, order_side:{}, post_only:{}, valid_until:{}, price:{}, size:{}, message:{}, remain_size{}}}",
+        self._order_index,
+        self.create_time,
+        self.order_id,
+        self.order_side,
+        self.post_only,
+        self.valid_until,
+        self.price,
+        self.size,
+        self.message,
+        self.remain_size);
+    }
+
+    pub fn __repr__(&self) -> String{
+        return self.__str__();
     }
 }
 
