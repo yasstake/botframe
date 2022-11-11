@@ -10,7 +10,7 @@ use std::iter::Iterator;
 /// ・　オーダーのExpire
 /// ・　オーダーの約定
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct OrderQueue {
     buy_queue: bool,
     q: Vec<Order>,
@@ -206,7 +206,7 @@ impl OrderQueue {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 ///　ポジションの１項目
 /// 　Positionsでポジションリストを扱う。
 pub struct Position {
@@ -286,7 +286,7 @@ impl Position {
 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Positions {
     pub long_position: Position,
     pub short_position: Position,

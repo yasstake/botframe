@@ -51,7 +51,7 @@ trait Market {
 pub struct FtxMarket {
     name: String,
     pub dummy: bool,
-    db: TradeTable,
+    pub db: TradeTable,
 }
 
 #[pymethods]
@@ -69,7 +69,7 @@ impl FtxMarket {
             db,
         };
     }
-
+    
     pub fn download(&mut self, ndays: i32, force: bool) -> i64 {
         let market = self.name.to_string();
         let (tx, rx): (Sender<Vec<Trade>>, Receiver<Vec<Trade>>) = mpsc::channel();
@@ -179,6 +179,12 @@ impl FtxMarket {
     pub fn select_all_statement(&self) -> Statement {
         return self.db.select_all_statement();
     }
+
+    /*
+    pub fn get_db(&self) -> TradeTable {
+        return self.db;
+    }
+    */
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

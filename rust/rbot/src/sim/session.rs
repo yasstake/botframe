@@ -115,8 +115,8 @@ pub struct DummySession {
     pub long_orders: OrderQueue,
     pub short_orders: OrderQueue,
     pub positions: Positions,
-    pub order_history: Vec<OrderResult>,
-    pub tick_order_history: Vec<OrderResult>,
+    // pub order_history: Vec<OrderResult>,
+    //pub tick_order_history: Vec<OrderResult>,
     pub wallet_balance: f64, // 入金額
     #[pyo3(get)]
     pub exchange_name: String,
@@ -139,8 +139,8 @@ impl DummySession {
             long_orders: OrderQueue::new(true),
             short_orders: OrderQueue::new(false),
             positions: Positions::new(),
-            order_history: vec![],
-            tick_order_history: vec![],
+            // order_history: vec![],
+            // tick_order_history: vec![],
             wallet_balance: 0.0,
             exchange_name: exchange_name.to_string().to_ascii_uppercase(),
             market_name: market_name.to_string().to_ascii_uppercase(),
@@ -206,7 +206,7 @@ impl DummySession {
 
     /// longポジションのサイズ（合計）
     #[getter]
-    fn get_long_pos_size(&self) -> f64{
+    fn get_long_position_size(&self) -> f64{
         return self.positions.get_long_position_size()
     }
 
@@ -295,7 +295,6 @@ impl DummySession {
     /// 最初にオーダー可能かどうか確認する（余力の有無）
     fn make_order(
         &mut self,
-        mut timestamp: i64,
         side: OrderSide,
         price: f64,
         size: f64,
@@ -308,10 +307,7 @@ impl DummySession {
         if 証拠金不足
             return Err(OrderStatus::NoMoney);
         */
-
-        if timestamp == 0 {
-            timestamp = self.current_timestamp;
-        }
+        let timestamp = self.current_timestamp;
 
         let order_id = self.generate_id();
         let order = Order::new(
@@ -515,7 +511,7 @@ impl DummySession {
         }
     }
 
-    fn update_position(&mut self, mut tick_result: &Vec<OrderResult>, order_result: &mut OrderResult) -> Result<(), OrderStatus> {
+    fn update_position(&mut self, mut tick_result: &mut Vec<OrderResult>, order_result: &mut OrderResult) -> Result<(), OrderStatus> {
         //ポジションに追加しする。
         //　結果がOpen,Closeポジションが行われるのでログに実行結果を追加
 
@@ -561,15 +557,15 @@ impl DummySession {
     // order_resultのログを蓄積する（オンメモリ）
     // ログオブジェクトは配列にいれるためClone する。
     // TODO: この中でAgentへコールバックできるか調査
-    fn log_order_result(&mut self, mut tick_log: &Vec<OrderResult>, order: &OrderResult) {
+    fn log_order_result(&mut self, mut tick_log: &mut Vec<OrderResult>, order: &OrderResult) {
         let mut order_result = order.clone();
         order_result.update_time = self.current_timestamp;
 
         self.calc_profit(&mut order_result);
 
-        let tick_result = order_result.clone();
-        self.order_history.push(order_result);
-        self.tick_order_history.push(tick_result);
+//        let tick_result = order_result.clone();
+//        self.order_history.push(order_result);
+        tick_log.push(order_result);
     }
 
     // トータルだけ損益を計算する。
@@ -588,7 +584,7 @@ impl DummySession {
     /* TODO: マージンの計算とFundingRate計算はあとまわし */
     pub fn main_exec_event(
         &mut self,
-        tick_result: &Vec<OrderResult>,
+        tick_result: &mut Vec<OrderResult>,
         current_time_ms: i64,
         order_type: OrderSide,
         price: f64,
@@ -699,16 +695,16 @@ mod test_session_value {
         let db = TradeTable::open("BTC-PERP").unwrap();
         let mut session = DummySession::new("FTX", "BTC-PERP");
 
-        let _r = session.make_order(0, OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
 
-        let r = session.exec_event_execute_order(2, OrderSide::Sell, 50.0, 5.0);
+        let r = session.exec_event_execute_order(1, OrderSide::Sell, 50.0, 5.0);
         println!("{:?}", session.long_orders);
         println!("{:?}", r);
-        let r = session.exec_event_execute_order(2, OrderSide::Sell, 49.0, 5.0);
+        let r = session.exec_event_execute_order( 2, OrderSide::Sell, 49.0, 5.0);
         println!("{:?}", session.long_orders);
         println!("{:?}", r);
-        let r = session.exec_event_execute_order(2, OrderSide::Sell, 49.0, 5.0);
+        let r = session.exec_event_execute_order(3, OrderSide::Sell, 49.0, 5.0);
         println!("{:?}", session.long_orders);
         println!("{:?}", r);
     }
@@ -719,9 +715,10 @@ mod test_session_value {
         let mut session = DummySession::new("FTX", "BTC-PERP");
 
         let mut tick_result: Vec<OrderResult> = vec![];
+        
 
         // 新規にポジション作る（ロング）
-        let _r = session.make_order(0, OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
 
         let mut result = session
@@ -730,12 +727,12 @@ mod test_session_value {
         println!("{:?}", session.long_orders);
         println!("{:?}", result);
 
-        let _r = session.update_position(&tick_result, &mut result);
+        let _r = session.update_position(&mut tick_result, &mut result);
         println!("{:?}", session.positions);
         println!("{:?}", result);
 
         // 一部クローズ
-        let _r = session.make_order(0, OrderSide::Sell, 30.0, 8.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Sell, 30.0, 8.0, 100, "".to_string());
         println!("{:?}", session.short_orders);
 
         let mut result = session
@@ -744,12 +741,12 @@ mod test_session_value {
         println!("{:?}", session.short_orders);
         println!("{:?}", result);
 
-        let _r = session.update_position(&tick_result, &mut result);
+        let _r = session.update_position(&mut tick_result, &mut result);
         println!("{:?}", session.positions);
         println!("{:?}", result);
 
         // クローズ＋オープン
-        let _r = session.make_order(0, OrderSide::Sell, 30.0, 3.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Sell, 30.0, 3.0, 100, "".to_string());
         println!("{:?}", session.short_orders);
 
         let mut result = session
@@ -758,11 +755,11 @@ mod test_session_value {
         println!("{:?}", session.short_orders);
         println!("{:?}", result);
 
-        let _r = session.update_position(&tick_result, &mut result);
+        let _r = session.update_position(&mut tick_result, &mut result);
         println!("{:?}", session.positions);
         println!("{:?}", result);
 
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);
     }
 
     /*
@@ -783,70 +780,74 @@ mod test_session_value {
         let mut tick_result: Vec<OrderResult> = vec![];
 
         // Warm Up
-        session.main_exec_event(&tick_result, 1, OrderSide::Sell, 150.0, 150.0);
-        session.main_exec_event(&tick_result, 2, OrderSide::Buy, 151.0, 151.0);
+        session.main_exec_event(&mut tick_result, 1, OrderSide::Sell, 150.0, 150.0);
+        session.main_exec_event(&mut tick_result, 2, OrderSide::Buy, 151.0, 151.0);
 
         println!("--make long order--");
 
         // TODO: 書庫金不足を確認する必要がある.
-        let _r = session.make_order(0, OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);
 
         // 売りよりも高い金額のオファーにはなにもしない。
-        session.main_exec_event(&tick_result, 3, OrderSide::Sell, 50.0, 150.0);
+        session.main_exec_event(&mut tick_result, 3, OrderSide::Sell, 50.0, 150.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);
 
         // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定
-        session.main_exec_event(&tick_result, 4, OrderSide::Sell, 49.5, 5.0);
+        session.main_exec_event(&mut tick_result, 4, OrderSide::Sell, 49.5, 5.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);        
+
 
         // 売りよりもやすい金額があると約定。Sizeが小さいので一部約定.２回目で約定。ポジションに登録
-        session.main_exec_event(&tick_result, 5, OrderSide::Sell, 49.5, 5.0);
+        session.main_exec_event(&mut tick_result, 5, OrderSide::Sell, 49.5, 5.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);        
 
-        session.main_exec_event(&tick_result, 5, OrderSide::Sell, 49.5, 5.0);
+
+        session.main_exec_event(&mut tick_result, 5, OrderSide::Sell, 49.5, 5.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);
+
 
         println!("--make short order--");
 
         // 決裁オーダーTODO: 書庫金不足を確認する必要がある.
 
-        let _r = session.make_order(0, OrderSide::Sell, 40.0, 12.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Sell, 40.0, 12.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
 
-        let _r = session.make_order(0, OrderSide::Sell, 41.0, 10.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Sell, 41.0, 10.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
 
-        session.main_exec_event(&tick_result, 5, OrderSide::Buy, 49.5, 11.0);
+        session.main_exec_event(&mut tick_result, 5, OrderSide::Buy, 49.5, 11.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);
 
-        session.main_exec_event(&tick_result, 5, OrderSide::Buy, 49.5, 20.0);
+        session.main_exec_event(&mut tick_result, 5, OrderSide::Buy, 49.5, 20.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);        
 
-        session.main_exec_event(&tick_result, 5, OrderSide::Buy, 49.5, 100.0);
+        session.main_exec_event(&mut tick_result, 5, OrderSide::Buy, 49.5, 100.0);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);        
 
         // 決裁オーダーTODO: 書庫金不足を確認する必要がある.
-        let _r = session.make_order(0, OrderSide::Buy, 80.0, 10.0, 100, "".to_string());
+        let _r = session.make_order(OrderSide::Buy, 80.0, 10.0, 100, "".to_string());
         // println!("{:?}", session.order_history);
         println!("{:?}", session.short_orders);
         println!("{:?}", session.positions);
 
         // 約定
-        session.main_exec_event(&tick_result, 8, OrderSide::Sell, 79.5, 200.0);
+        session.main_exec_event(&mut tick_result, 8, OrderSide::Sell, 79.5, 200.0);
         println!("{:?}", session.long_orders);
         println!("{:?}", session.positions);
-        println!("{:?}", session.order_history);
+        println!("{:?}", tick_result);        
+
     }
 }

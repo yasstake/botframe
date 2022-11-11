@@ -1,12 +1,12 @@
 use pyo3::{pyclass, pymethods, Py, PyAny, Python};
 use rusqlite::params;
 
-
 use crate::{
     common::{
         order::{OrderResult, OrderSide, Trade},
-        time::{CEIL, SEC, MicroSec},
+        time::{MicroSec, CEIL, SEC},
     },
+    db::open_db,
     exchange::ftx::FtxMarket,
     sim::session::DummySession,
 };
@@ -33,7 +33,7 @@ impl BackTester {
         };
     }
 
-    pub fn run(&mut self, exchange_name: &str, market_name: &str, agent: &PyAny) {
+    pub fn run(&mut self, agent: &PyAny) -> Vec<OrderResult> {
         self.agent_on_tick = self.has_want_event(agent, "on_tick");
         self.agent_on_clock = self.has_want_event(agent, "on_clock");
         self.agent_on_update = self.has_want_event(agent, "on_update");
@@ -45,9 +45,10 @@ impl BackTester {
         let clock_interval = self.clock_interval(agent);
         log::debug!("clock interval {:?}", clock_interval);
 
-        let ftx = FtxMarket::new("BTC-PERP", true);
-        log::debug!("FtxMarket created {:?}", &ftx);
-        let mut statement = ftx.select_all_statement();
+        let db = open_db(self.exchange_name.as_str(), self.market_name.as_str());
+        let mut statement = db.select_all_statement();
+
+        let mut order_history: Vec<OrderResult> = vec![];
 
         Python::with_gil(|py| {
             let iter = statement
@@ -66,7 +67,8 @@ impl BackTester {
                 })
                 .unwrap();
 
-            let mut session = DummySession::new(exchange_name, market_name);
+            let mut session =
+                DummySession::new(self.exchange_name.as_str(), self.market_name.as_str());
             let mut s = Py::new(py, session).unwrap();
             let mut last_clock: i64 = 0;
 
@@ -86,8 +88,9 @@ impl BackTester {
                         //let results = session.main_exec_event(t.time, t.order_side, t.price, t.size);
 
                         let mut tick_result: Vec<OrderResult> = vec![];
+
                         session.main_exec_event(
-                            &tick_result,
+                            &mut tick_result,
                             t.time,
                             t.order_side,
                             t.price,
@@ -96,10 +99,11 @@ impl BackTester {
                         s = Py::new(py, session).unwrap();
                         s = self.tick(s, agent, &t);
 
-                        if self.agent_on_update {
-                            for r in tick_result {
-                                s = self.update(s, agent, r.update_time, r);
+                        for r in tick_result {
+                            if self.agent_on_update {
+                                s = self.update(s, agent, r.update_time, r.clone());
                             }
+                            order_history.push(r);
                         }
                     }
                     Err(e) => {
@@ -109,20 +113,7 @@ impl BackTester {
             }
         });
 
-        /*
-        let trade = Trade::new(1, OrderSide::Buy, 1.0, 1.0, false, "".to_string());
-        Python::with_gil(|py|{
-            let mut s = Py::new(py, session).unwrap();
-            let s = self.tick(s, &trade, agent);
-
-            let mut session = s.extract::<DummySession>(py).unwrap();
-            session.main_exec_event(trade.time, trade.order_side, trade.price, trade.size);
-
-            let trade = Trade::new(2, OrderSide::Buy, 3.0, 1.0, false, "".to_string());
-            let mut s = Py::new(py, session).unwrap();
-            let s = self.tick(s.clone(), &trade, agent);
-        });
-        */
+        return order_history;
     }
 }
 
@@ -170,8 +161,14 @@ impl BackTester {
         return session;
     }
 
-    fn update(&mut self, session: Py<DummySession>, agent: &PyAny, time: MicroSec, r: OrderResult) -> Py<DummySession>{
-        let result = agent.call_method1("_on_update", (time, &session, r));      
+    fn update(
+        &mut self,
+        session: Py<DummySession>,
+        agent: &PyAny,
+        time: MicroSec,
+        r: OrderResult,
+    ) -> Py<DummySession> {
+        let result = agent.call_method1("_on_update", (time, &session, r));
 
         match result {
             Ok(_oK) => {
@@ -236,7 +233,7 @@ class Agent:
 
             let agent = agent_class.call0().unwrap();
 
-            b.run("FTX", "BTC-PERP", agent);
+            b.run(agent);
         });
     }
 }

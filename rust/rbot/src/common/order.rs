@@ -258,6 +258,47 @@ impl OrderResult {
 
         return Ok(child);
     }
+
+    pub fn __str__(&self) -> String {
+        return format!("update_time: {:?}, order_id: {:?}, order_sub_id: {:?}, order_side: {:?}, post_only: {:?}, create_time: {:?}, status: {:?}, open_price: {:?}, close_price: {:?}, price: {:?}, home_size: {:?}, foreign_size: {:?}, profit: {:?}, fee: {:?}, total_profit: {:?}, message: {:?}",
+            self.update_time, 
+            self.order_id,
+            self.order_sub_id,
+            self.order_side,
+            self.post_only,
+            self.create_time,
+            self.status,
+            self.open_price,
+            self.close_price,
+            self.price,
+            self.home_size,
+            self.foreign_size,
+            self.profit,
+            self.fee,
+            self.total_profit,
+            self.message);
+
+    }
+
+    pub fn __repr__(&self) -> String {
+        return format!("update_time: {:?}, order_id: {:?}, order_sub_id: {:?}, order_side: {:?}, post_only: {:?}, create_time: {:?}, status: {:?}, open_price: {:?}, close_price: {:?}, price: {:?}, home_size: {:?}, foreign_size: {:?}, profit: {:?}, fee: {:?}, total_profit: {:?}, message: {:?}",
+            self.update_time, 
+            self.order_id,
+            self.order_sub_id,
+            self.order_side,
+            self.post_only,
+            self.create_time,
+            self.status,
+            self.open_price,
+            self.close_price,
+            self.price,
+            self.home_size,
+            self.foreign_size,
+            self.profit,
+            self.fee,
+            self.total_profit,
+            self.message)
+    }
 }
 
 
