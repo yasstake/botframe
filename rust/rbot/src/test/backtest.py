@@ -23,13 +23,29 @@ class Agent(BaseAgent):
     #    print(session.current_timestamp)
     #    session.make_order(0, OrderSide.Buy, session.current_timestamp, 10.0, 100, "")
 
+    def on_tick(self, session, time, price, side, size):
+        pass
+
     def on_clock(self, time, session):
-        print(time)
-        print(session.current_timestamp)
-        
+        #print(time)
+        #
+        # print(session.current_timestamp)
+        if session.long_order_size == 0 and session.long_position_size == 0:
+            ohlcv = session.ohlcv(60, 100)
+            print(ohlcv)
+            session.make_order(OrderSide.Buy, session.sell_board_edge_price, 10.0, 1000, "MyOrder")
+
+
+    def on_update(self, time, session, result):
+        print(str(result))
+        pass
+
+    
 
 bt = BackTester("FTX", "BTC-PERP")
 
-bt.run("FTX", "BTC-PERP", Agent())
+r = bt.run(Agent())
+
+print(r)
 
 

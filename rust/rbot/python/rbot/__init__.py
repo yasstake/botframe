@@ -101,7 +101,8 @@ class Market:
         exchange = exchange.upper()
         if exchange == "FTX":
             m = FtxMarket(market, cls.DUMMY_MODE)
-            cls.MARKET[exchange.upper() + "/" + market.upper()] = m
+            key = Market.key(exchange, market)            
+            cls.MARKET[key] = m
             return m
 
     @classmethod
@@ -111,8 +112,17 @@ class Market:
     
     @classmethod
     def get(cls, exchange, market):
-        return cls.MARKET[exchange.upper() + "/" + market.upper()]
+        key = Market.key(exchange, market)
+        
+        if key in cls.MARKET:
+            return cls.MARKET[exchange.upper() + "/" + market.upper()]
+        else:
+            return Market.open(exchange, market)
 
+
+    @staticmethod
+    def key(exchange, market):
+        return exchange.upper() + "/" + market.upper()
 
 
 class FtxMarket:
