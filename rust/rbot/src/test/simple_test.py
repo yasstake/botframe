@@ -1,63 +1,34 @@
-
+import numpy as np
+import pandas
+import pandas as pd
 
 import rbot
-
-import rbot._DummySession
-
+from rbot import init_log;
+from rbot import Market
 from rbot import Session
-#import rbot.DummySession
-#from rbot import _DummySession
-#from rbot import OrderResult
+from rbot import BaseAgent
+from rbot import NOW
+from rbot import DAYS
+from rbot import _DummySession
 
 
-
-rbot.init_log()
-
-ftx = rbot.FtxMarket("BTC-PERP")
-
-# ftx.load_log(10)
-
-# session = rbot._DummySession()
-
-MARKET = []
-
-def create_market(exchange, market):
-    if exchange == "FTX":
-        MARKET[exchange] = rbot.FtxMarket(market)
-
-def get_market(market):
-    return MARKET[market]
+init_log()
+Market.dummy_mode()
+Market.open("FTX", "BTC-PERP")
+Market.download(1)
 
 
-class BaseAgent:
-    def on_tick(timestamp: int, price: float, size: float, order_side: str):
-        pass
+class Agent(BaseAgent):   
+    def clock_interval(self):
+        return 60    # Sec
     
-    def on_clock(timestamp: int, Session: Session):
-        pass
-    
-    def on_update(timestamp: int, Session: Session, result: OrderResult):
-        pass
-    
-
-class Session:
-    def __init__(self, dummy: bool):
-        if dummy:
-            self.session = rbot._DummySession()
+    def on_tick(self, time, price, side, size):
+        print("tick", time, price, side, size)
+        print(session.current_timestamp)
+        
 
 
-class MyAgent:
-    def on_tick(timestamp: int, price: float, size: float, order_side: str):
-        pass
-    
-    def on_clock(timestamp: int, Session: Session):
-        pass
-    
-    def on_update(timestamp: int, Session: Session, result: OrderResult):
-        pass
-    
+session = _DummySession()
+session.run(Agent(), 0, 0)
 
 
-
-if __name__ == "__main__":
-    print("main")

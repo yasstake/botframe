@@ -6,7 +6,7 @@ use crate::common::order::{TimeChunk, Trade};
 use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, CEIL, MICRO_SECOND, NOW, DAYS, SEC};
 use crate::OrderSide;
 use polars::prelude::DataFrame;
-use rusqlite::{params, params_from_iter, Connection, Error, Result};
+use rusqlite::{params, params_from_iter, Connection, Error, Result, MappedRows, Rows, Statement};
 
 use super::df::{OhlcvBuffer, merge_df, ohlcv_from_ohlcv_df};
 use crate::db::df::TradeBuffer;
@@ -115,6 +115,7 @@ fn check_skip_time(mut trades: &Vec<Trade>) {
     }
 }
 
+#[derive(Debug)]
 pub struct TradeTable {
     file_name: String,
     connection: Connection,
@@ -200,7 +201,7 @@ impl TradeTable {
             param = vec![from_time, to_time];
         } else {
             //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp";
+            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
             param = vec![from_time];
         }
 
@@ -236,6 +237,69 @@ impl TradeTable {
         }
     }
 
+    pub fn select_all_statement(&self) -> Statement {
+        let statement = self.connection.prepare("select time_stamp, action, price, size, liquid, id from trades order by time_stamp").unwrap();
+        return statement;
+    }
+
+    /*
+    // 
+    pub fn select_iter(&mut self, from_time: MicroSec, to_time: MicroSec) -> Result<Rows, Error> {
+        let mut sql = "";
+        let mut param = vec![];
+
+        if 0 < to_time {
+            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
+            param = vec![from_time, to_time];
+        } else {
+            //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+            param = vec![from_time];
+        }
+
+        let mut statement = self.connection.prepare(sql).unwrap();
+
+        let start_time = NOW();
+
+//        let rows = statement.query(params_from_iter(param.iter()));
+        return statement.query(params_from_iter(param.iter()));
+
+    }
+    */
+/*
+        match rows {
+            Ok(r) => {
+                return r;
+            },
+            Err(e) => {
+                log::warn!("select error = {}", e);
+                panic!("");
+            }
+        }
+
+        /*
+        let transaction_iter = statement
+            .query_map(params_from_iter(param.iter()), |row| {
+                let bs_str: String = row.get_unwrap(1);
+                let bs = OrderSide::from_str(bs_str.as_str());
+
+                Ok(Trade {
+                    time: row.get_unwrap(0),
+                    price: row.get_unwrap(2),
+                    size: row.get_unwrap(3),
+                    order_side: bs,
+                    liquid: row.get_unwrap(4),
+                    id: row.get_unwrap(5),
+                })
+            })
+            .unwrap();
+
+        log::debug!("create iter {} microsec", NOW() - start_time);
+
+        return transaction_iter;
+        */
+    }
+*/
     pub fn select_df_from_db(&mut self, from_time: MicroSec, to_time: MicroSec) -> DataFrame {
         let mut buffer = TradeBuffer::new();
 
@@ -400,27 +464,29 @@ impl TradeTable {
 
             Ok(format!(
                 r#"
-                <p><b>path =</b> {:?}</p>                
-                <p><b>records=</b> {:?}</p>
                 <table>
                 <caption>Trade Database info table</caption>
                 <tr><th>start</th><th>end</th></tr>
                 <tr><td>{:?}</td><td>{:?}</td></tr>
                 <tr><td>{:?}</td><td>{:?}</td></tr>
+                <tr><td><b>records=</b></td><td>{}</td></tr>
+                <tr><td><b>days=</b></td><td>{}</td></tr>                
+                <tr><td><b>path=</b>{}</td></tr>                
                 </table>                
                 "#,
-                self.file_name,
-                count,
                 min, max,
                 time_string(min),
                 time_string(max),
+                count,
+                (max - min)/DAYS(1),
+                self.file_name,
             ))
         });
 
         // gap info
         let chunks = self.select_gap_chunks(start_time, 0, SEC(60));
 
-        let mut table:String = "<table><caption>Data Ga</caption><tr><th>start</th><th>end</th><th>days ago</th></tr>".to_string();
+        let mut table:String = "<table><caption>Data Gap</caption><tr><th>start</th><th>end</th><th>days ago</th></tr>".to_string();
         for c in chunks {
             let days_ago = (NOW() - c.start) / DAYS(1);
             table += &format!("<tr><td>{:?}</td><td>{:?}</td><td>{}</td></tr>", time_string(c.start), time_string(c.end), days_ago);
@@ -597,7 +663,7 @@ impl TradeTable {
 
 
 
-    pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<(), Error> {
+    pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<i64, Error> {
         let mut tx = self.connection.transaction()?;
 
         let trades_len = trades.len();
@@ -634,17 +700,17 @@ impl TradeTable {
 
         let result = tx.commit();
 
-        if result.is_err() {
-            return result;
+        match result {
+            Ok(_) => {
+                Ok(insert_len as i64)
+            },
+            Err(e) => {
+                return Err(e)
+            }
         }
-
-        if trades_len != insert_len {
-            println!("insert mismatch {} {}", trades_len, insert_len);
-        }
-
-        Ok(())
     }
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///   Test Suite

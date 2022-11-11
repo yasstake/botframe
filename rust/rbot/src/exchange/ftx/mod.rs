@@ -10,6 +10,7 @@ use pyo3::exceptions::PySystemError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::*;
+use rusqlite::Statement;
 
 use crate::common::order::Trade;
 use crate::common::time::{MicroSec, time_string};
@@ -45,6 +46,7 @@ trait Market {
     ) -> PyResult<Py<PyArray2<f64>>>;
 }
 
+#[derive(Debug)]
 #[pyclass(name = "_FtxMarket")]
 pub struct FtxMarket {
     name: String,
@@ -68,7 +70,7 @@ impl FtxMarket {
         };
     }
 
-    pub fn download(&mut self, ndays: i32, force: bool) -> String {
+    pub fn download(&mut self, ndays: i32, force: bool) -> i64 {
         let market = self.name.to_string();
         let (tx, rx): (Sender<Vec<Trade>>, Receiver<Vec<Trade>>) = mpsc::channel();
 
@@ -94,10 +96,20 @@ impl FtxMarket {
             });
         }
 
+        let mut insert_rec_no = 0;
+
         loop {
             match rx.recv() {
                 Ok(trades) => {
-                    let _ = &self.db.insert_records(&trades);
+                    let result = &self.db.insert_records(&trades);
+                    match result {
+                        Ok(rec_no) => {
+                            insert_rec_no += rec_no;                            
+                        },
+                        Err(e) => {
+                            log::warn!("insert error {:?}", e);
+                        }
+                    }
                 }
                 Err(e) => {
                     break;
@@ -105,7 +117,7 @@ impl FtxMarket {
             }
         }
 
-        return self.db.info();
+        return insert_rec_no;
     }
 
 
@@ -148,6 +160,24 @@ impl FtxMarket {
 
     pub fn _repr_html_(&self) -> String {
         return self.db._repr_html_();
+    }
+}
+
+pub trait DbForeach {
+    fn foreach_trade<F>(&mut self, from_time: MicroSec, to_time: MicroSec, f: F)where  F: FnMut(&Trade);
+}
+
+impl DbForeach for FtxMarket {
+    fn foreach_trade<F>(&mut self, from_time: MicroSec, to_time: MicroSec, f: F)
+    where  F: FnMut(&Trade) {
+            log::debug!("foreach_trade (from={}, to={})", from_time, to_time);
+            self.db.select(from_time, to_time, f);            
+    }
+}
+
+impl FtxMarket {
+    pub fn select_all_statement(&self) -> Statement {
+        return self.db.select_all_statement();
     }
 }
 

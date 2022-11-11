@@ -134,7 +134,7 @@ impl Order {
     }
 
     pub fn __str__(&self) -> String {
-        return format!("{{order_index:{}, create_time:{}, order_id:{}, order_side:{}, post_only:{}, valid_until:{}, price:{}, size:{}, message:{}, remain_size{}}}",
+        return format!("{{order_index:{}, create_time:{}, order_id:{}, order_side:{}, post_only:{}, valid_until:{}, price:{}, size:{}, message:{}, remain_size:{}}}",
         self._order_index,
         self.create_time,
         self.order_id,
@@ -144,7 +144,8 @@ impl Order {
         self.price,
         self.size,
         self.message,
-        self.remain_size);
+        self.remain_size,
+    );
     }
 
     pub fn __repr__(&self) -> String{

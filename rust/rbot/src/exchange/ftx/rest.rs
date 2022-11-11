@@ -1,11 +1,10 @@
 use crate::common::order::{Trade, TimeChunk};
 use crate::common::time::{time_string, to_seconds, MicroSec, DAYS, HHMM, NOW, MICRO_SECOND};
 use crate::db::sqlite::TradeTable;
-use crate::exchange::ftx::message::FtxTradeMessage;
 use log;
-use std::sync::mpsc::Sender;
 use std::thread::sleep;
 use std::time::Duration;
+use crate::exchange::ftx::message::FtxTradeMessage;
 
 const FTX_REST_ENDPOINT: &str = "https://ftx.com/api";
 
@@ -315,7 +314,9 @@ mod test_ftx_client {
         let to_time = NOW() + HHMM(0, 5);
         let from_time = to_time - HHMM(20, 0);
 
-        download_trade_callback(BTCMARKET, from_time, to_time, |trade| db.insert_records(&trade).expect("inserterror"));
+        download_trade_callback(BTCMARKET, from_time, to_time, |trade| {
+            let _ = db.insert_records(&trade);
+        });
     }
 
 

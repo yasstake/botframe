@@ -17,6 +17,7 @@ use exchange::ftx::FtxMarket;
 
 use common::time::*;
 use sim::session::DummySession;
+use sim::back::BackTester;
 
 
 
@@ -35,7 +36,8 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Order>()?;
     m.add_class::<OrderSide>()?;
     m.add_class::<FtxMarket>()?;
-    m.add_class::<DummySession>()?;   
+    m.add_class::<DummySession>()?; 
+    m.add_class::<BackTester>()?; 
 
     Ok(())
 }
