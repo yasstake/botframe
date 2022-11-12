@@ -37,10 +37,16 @@ def trades_to_df(array):
 
 def ohlcvv_to_df(array):
     df = pd.DataFrame(
-        array, columns=["timestamp", "order_side", "open", "high", "low", "close", "vol", "count"])
+        array, columns=["timestamp", "order_side", "open", "high", "low", "close", "vol", "count", "start_time", "end_time"])
     df['timestamp'] = pd.to_datetime(
         (df["timestamp"]), utc=True, unit='us')
     df = df.set_index('timestamp')
+
+    df['start_time'] = pd.to_datetime(
+        (df["start_time"]), utc=True, unit='us')
+
+    df['end_time'] = pd.to_datetime(
+        (df["end_time"]), utc=True, unit='us')
 
     df['order_side'] = df['order_side'].map(decode_order_side)
 
@@ -115,10 +121,9 @@ class Market:
         key = Market.key(exchange, market)
         
         if key in cls.MARKET:
-            return cls.MARKET[exchange.upper() + "/" + market.upper()]
+            return cls.MARKET[key]
         else:
             return Market.open(exchange, market)
-
 
     @staticmethod
     def key(exchange, market):

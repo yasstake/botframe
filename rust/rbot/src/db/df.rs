@@ -117,7 +117,9 @@ pub fn ohlcv_df(
             col(KEY::price).min().alias(KEY::low),
             col(KEY::price).last().alias(KEY::close),
             col(KEY::size).sum().alias(KEY::vol),
-            col(KEY::price).count().alias(KEY::count)
+            col(KEY::price).count().alias(KEY::count),
+            col(KEY::time_stamp).min().alias(KEY::start_time),
+            col(KEY::time_stamp).max().alias(KEY::end_time),
         ])
         .sort(
             KEY::time_stamp,
@@ -160,7 +162,9 @@ pub fn ohlcv_from_ohlcv_df(
             col(KEY::low).min().alias(KEY::low),
             col(KEY::close).last().alias(KEY::close),
             col(KEY::vol).sum().alias(KEY::vol),
-            col(KEY::count).sum().alias(KEY::count)
+            col(KEY::count).sum().alias(KEY::count),
+            col(KEY::start_time).min().alias(KEY::start_time),
+            col(KEY::end_time).max().alias(KEY::end_time),
         ])
         .sort(
             KEY::time_stamp,

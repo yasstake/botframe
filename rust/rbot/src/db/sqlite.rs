@@ -402,7 +402,9 @@ impl TradeTable {
                 KEY::low,
                 KEY::close,
                 KEY::vol,
-                KEY::count
+                KEY::count,
+                KEY::start_time,
+                KEY::end_time
             ])
             .unwrap()
             .to_ndarray::<Float64Type>()
