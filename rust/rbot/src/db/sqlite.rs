@@ -94,7 +94,7 @@ impl Ohlcvv {
 }
 
 fn check_skip_time(mut trades: &Vec<Trade>) {
-    if log::log_enabled!(Debug) {
+    if log_enabled!(Debug) {
         let mut last_time: MicroSec = 0;
         let mut last_id: String = "".to_string();
 
@@ -126,12 +126,12 @@ pub struct TradeTable {
 impl TradeTable {
     const OHLCV_WINDOW_SEC: i64 = 60;        // min
 
-    pub fn OhlcvStart(t: MicroSec) -> MicroSec {
+    pub fn ohlcv_start(t: MicroSec) -> MicroSec {
         return FLOOR(t, TradeTable::OHLCV_WINDOW_SEC);
     }
 
 
-    pub fn OhlcvEnd(t: MicroSec) -> MicroSec {
+    pub fn ohlcv_end(t: MicroSec) -> MicroSec {
         return CEIL(t, TradeTable::OHLCV_WINDOW_SEC);
     }
 
@@ -144,7 +144,7 @@ impl TradeTable {
                 let df = TradeBuffer::new().to_dataframe();
                 let ohlcv = ohlcv_df(&df, 0, 0, TradeTable::OHLCV_WINDOW_SEC);
 
-                return Ok(TradeTable {
+                Ok(TradeTable {
                     file_name: name.to_string(),
                     connection: conn,
                     cache_df: df,
@@ -325,7 +325,7 @@ impl TradeTable {
                 self.load_df(from_time, to_time);
 
                 // update ohlcv
-                self.cache_ohlcv = ohlcv_df(&self.cache_df, TradeTable::OhlcvStart(from_time), to_time, TradeTable::OHLCV_WINDOW_SEC);
+                self.cache_ohlcv = ohlcv_df(&self.cache_df, TradeTable::ohlcv_start(from_time), to_time, TradeTable::OHLCV_WINDOW_SEC);
                 return;
             }
         }
@@ -350,8 +350,8 @@ impl TradeTable {
             self.cache_df = merge_df(&df1, &self.cache_df);
 
             // update ohlcv
-            let ohlcv1_start = TradeTable::OhlcvStart(from_time);
-            let ohlcv1_end = TradeTable::OhlcvStart(df_start_time);
+            let ohlcv1_start = TradeTable::ohlcv_start(from_time);
+            let ohlcv1_end = TradeTable::ohlcv_start(df_start_time);
 
             log::debug!("cache update diff before {} -> {}", time_string(ohlcv1_start), time_string(ohlcv1_end));
             let ohlcv1 = ohlcv_df(&self.cache_df, ohlcv1_start, ohlcv1_end, TradeTable::OHLCV_WINDOW_SEC);
@@ -366,8 +366,8 @@ impl TradeTable {
             self.cache_df = merge_df(&self.cache_df, &df2);
 
             // update ohlcv
-            let ohlcv2_start = TradeTable::OhlcvStart(from_time);
-            let ohlcv2_end = TradeTable::OhlcvStart(to_time);
+            let ohlcv2_start = TradeTable::ohlcv_start(from_time);
+            let ohlcv2_end = TradeTable::ohlcv_start(to_time);
 
             log::debug!("cache update diff after {} -> {}", time_string(ohlcv2_start), time_string(ohlcv2_end));
             let ohlcv1 = select_df(&self.cache_ohlcv, 0, ohlcv2_start);
@@ -381,15 +381,15 @@ impl TradeTable {
         self.update_cache_df(from_time, to_time);
 
         if time_window_sec % TradeTable::OHLCV_WINDOW_SEC == 0 {
-            return ohlcv_from_ohlcv_df(&self.cache_ohlcv, from_time, to_time, time_window_sec);
+            ohlcv_from_ohlcv_df(&self.cache_ohlcv, from_time, to_time, time_window_sec)
         }
         else {
-            return ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec);
+            ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec)
         }
     }
 
     pub fn ohlcv_array(&mut self, mut from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> ndarray::Array2<f64> {
-        from_time = TradeTable::OhlcvStart(from_time);      // 開始tickは確定足、終了は未確定足もOK.
+        from_time = TradeTable::ohlcv_start(from_time);      // 開始tickは確定足、終了は未確定足もOK.
 
         let df = self.ohlcv_df(from_time, to_time, time_window_sec);
 
@@ -497,10 +497,10 @@ impl TradeTable {
 
 
         if r.is_ok() {
-            return r.unwrap() + &table;
+            r.unwrap() + &table
         }
         else {
-            return "<H2>NO DATA INTABLE</H2>".to_string();
+            "<H2>NO DATA INTABLE</H2>".to_string()
         }
     }
 
@@ -576,12 +576,9 @@ impl TradeTable {
 
         if from_time + allow_size <= db_start_time {
             log::debug!("before db {:?}-{:?}", time_string(from_time), time_string(db_start_time));
-            return vec![TimeChunk {
-                start: from_time,
-                end: db_start_time,
-            }];
+            vec![TimeChunk {start: from_time, end: db_start_time}]
         } else {
-            return vec![];
+            vec![]
         }
     }
 
@@ -605,12 +602,9 @@ impl TradeTable {
 
         if db_end_time + allow_size < to_time {
             log::debug!("after db {:?}-{:?}", time_string(db_end_time), time_string(to_time));                        
-            return vec![TimeChunk {
-                start: db_end_time,
-                end: to_time,
-            }];
+            vec![TimeChunk {start: db_end_time, end: to_time}]
         } else {
-            return vec![];
+            vec![]
         }
     }
 
@@ -668,7 +662,7 @@ impl TradeTable {
     pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<i64, Error> {
         let mut tx = self.connection.transaction()?;
 
-        let trades_len = trades.len();
+        // let trades_len = trades.len();
         let mut insert_len = 0;
 
         check_skip_time(trades);
@@ -737,7 +731,7 @@ mod test_transaction_table {
 
     #[test]
     fn test_open() {
-        TradeTable::open("test.db");
+        let _result = TradeTable::open("test.db");
     }
 
     #[test]
@@ -956,7 +950,7 @@ mod test_transaction_table {
         for i in 0..100 {
             let trade = Trade::new(i, OrderSide::Buy, 10.0, 10.0, false, "abc1".to_string());
             println!("<{:?}", trade);
-            tx.send(trade);
+            let _result = tx.send(trade);
         }
 
         // handle.join().unwrap();　// 送信側がスレッドだとjoinがうまくいかない。

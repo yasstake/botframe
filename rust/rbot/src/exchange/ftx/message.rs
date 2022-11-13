@@ -39,11 +39,11 @@ impl FtxTradeMessage {
                     println!("REST ERROR {:?}", m);
                 }
 
-                return Ok(m);
+                Ok(m)
             },
             Err(e) => {
                 log::debug!("Parse error {:?}", e);
-                return Err(e);
+                Err(e)
             }
         }
     }

@@ -33,7 +33,7 @@ class Agent(BaseAgent):
         if session.long_order_size == 0 and session.long_position_size == 0:
             ohlcv = session.ohlcv(60, 100)
             print(ohlcv)
-            session.make_order(OrderSide.Buy, session.sell_board_edge_price, 10.0, 1000, "MyOrder")
+            session.make_order("BUY", session.sell_board_edge_price, 10.0, 1000, "MyOrder")
 
 
     def on_update(self, time, session, result):

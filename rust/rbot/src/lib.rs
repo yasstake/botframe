@@ -12,6 +12,7 @@ use common::{
     order::{Order, OrderSide},
     time::time_string,
     init_log,
+    init_debug_log,
 };
 use exchange::ftx::FtxMarket;
 
@@ -25,6 +26,7 @@ use sim::back::BackTester;
 #[pymodule]
 fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(init_log, m)?)?;
+    m.add_function(wrap_pyfunction!(init_debug_log, m)?)?;
 
     // time util
     m.add_function(wrap_pyfunction!(time_string, m)?)?;

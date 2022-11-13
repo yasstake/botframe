@@ -17,13 +17,13 @@ impl OrderSide {
     pub fn from_str(order_type: &str) -> Self {
         match order_type.to_uppercase().as_str() {
             "B" | "BUY" => {
-                return OrderSide::Buy;
+                OrderSide::Buy
             }
             "S" | "SELL" | "SEL" => {
-                return OrderSide::Sell;
+                OrderSide::Sell
             }
             _ => {
-                return OrderSide::Unknown;
+                OrderSide::Unknown
             }
         }
     }
@@ -31,10 +31,10 @@ impl OrderSide {
     pub fn from_buy_side(buyside: bool) -> Self {
         match buyside {
             true => {
-                return OrderSide::Buy;
+                OrderSide::Buy
             },
             _ => {
-                return OrderSide::Sell;
+                OrderSide::Sell
             }
         }
     }
@@ -42,10 +42,10 @@ impl OrderSide {
     pub fn is_buy_side(&self) -> bool {
         match &self {
             OrderSide::Buy => {
-                return true;
+                true
             }
             _ => {
-                return false;
+                false
             }
         }
     }
@@ -101,7 +101,7 @@ pub struct Order {
     pub post_only: bool,
     pub valid_until: MicroSec, // in ns
     pub price: f64,           // in
-    pub size: f64,            // in forein
+    pub size: f64,            // in foreign
     pub message: String,
     pub remain_size: f64, // ログから想定した未約定数。０になったら全部約定。
 }
@@ -116,7 +116,7 @@ impl Order {
         post_only: bool,
         valid_until: MicroSec, // in ns
         price: f64,
-        size: f64,            // in forreign currency.
+        size: f64,            // in foreign currency.
         message: String,
     ) -> Self {
         return Order {
@@ -134,7 +134,7 @@ impl Order {
     }
 
     pub fn __str__(&self) -> String {
-        return format!("{{order_index:{}, create_time:{}, order_id:{}, order_side:{}, post_only:{}, valid_until:{}, price:{}, size:{}, message:{}, remain_size:{}}}",
+        return format!("{{order_index:{}, create_time:{}, order_id:{}, order_side:{:?}, post_only:{}, valid_until:{}, price:{}, size:{}, message:{}, remain_size:{}}}",
         self._order_index,
         self.create_time,
         self.order_id,
@@ -159,7 +159,7 @@ pub enum OrderStatus {
     NoAction,
     Wait,          // 処理中
     InOrder,       // オーダー中
-    OrderComplete, // tempolary status.
+    OrderComplete, // temporary status.
     OpenPosition,  // ポジションオープン
     ClosePosition, // ポジションクローズ（このときだけ、損益計算する）
     OverPosition,  // ポジション以上の反対売買。別途分割して処理する。
@@ -258,7 +258,10 @@ impl OrderResult {
 
         return Ok(child);
     }
+}
 
+#[pymethods]
+impl OrderResult{
     pub fn __str__(&self) -> String {
         return format!("update_time: {:?}, order_id: {:?}, order_sub_id: {:?}, order_side: {:?}, post_only: {:?}, create_time: {:?}, status: {:?}, open_price: {:?}, close_price: {:?}, price: {:?}, home_size: {:?}, foreign_size: {:?}, profit: {:?}, fee: {:?}, total_profit: {:?}, message: {:?}",
             self.update_time, 
@@ -281,23 +284,7 @@ impl OrderResult {
     }
 
     pub fn __repr__(&self) -> String {
-        return format!("update_time: {:?}, order_id: {:?}, order_sub_id: {:?}, order_side: {:?}, post_only: {:?}, create_time: {:?}, status: {:?}, open_price: {:?}, close_price: {:?}, price: {:?}, home_size: {:?}, foreign_size: {:?}, profit: {:?}, fee: {:?}, total_profit: {:?}, message: {:?}",
-            self.update_time, 
-            self.order_id,
-            self.order_sub_id,
-            self.order_side,
-            self.post_only,
-            self.create_time,
-            self.status,
-            self.open_price,
-            self.close_price,
-            self.price,
-            self.home_size,
-            self.foreign_size,
-            self.profit,
-            self.fee,
-            self.total_profit,
-            self.message)
+        return self.__str__();
     }
 }
 

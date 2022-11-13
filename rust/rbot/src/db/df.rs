@@ -1,5 +1,5 @@
 use crate::common::order::Trade;
-use crate::common::time::{to_naivedatetime, MicroSec, MICRO_SECOND, NANO_SECOND, SEC, time_string};
+use crate::common::time::{to_naive_datetime, MicroSec, MICRO_SECOND, NANO_SECOND, SEC, time_string};
 use chrono::NaiveDateTime;
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
@@ -82,10 +82,10 @@ pub fn merge_df(df1: &DataFrame, df2: &DataFrame) -> DataFrame {
 
     if df2_start_time.is_some() {
         let df = select_df(df1, 0, df2_start_time.unwrap());
-        return df.vstack(df2).unwrap();
+        df.vstack(df2).unwrap()
     }
     else {
-        return df1.clone();
+        df1.clone()
     }
 }
 

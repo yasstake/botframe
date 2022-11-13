@@ -1,7 +1,10 @@
-use crate::common::{time::MicroSec, order::OrderSide, order::Order, order::OrderStatus, order::OrderResult};
+use crate::common::{
+    order::Order, order::OrderResult, order::OrderSide, order::OrderStatus, time::MicroSec,
+};
 
 use std::cmp::Ordering;
 use std::iter::Iterator;
+use crate::common::order::Trade;
 
 /// 未実現オーダーリストを整理する。
 /// ・　オーダーの追加
@@ -39,6 +42,22 @@ impl OrderQueue {
         self.sort();
     }
 
+    /*
+    // TODO: キャンセルオーダーの実装
+    // TOD: ログ出力の実装（上位で実装？）
+    pub fn cancel_order(&mut self, order_id: String) -> bool {
+        let index = 0;
+
+        for order in self.q {
+            if order.order_id == order_id {
+                order
+                return true;
+            }
+            index += 1;
+        }
+        return false;
+    }
+    */
     /*
     pub fn margin(&mut self) -> f64 {
         let mut m: f64 = 0.0;
@@ -129,18 +148,16 @@ impl OrderQueue {
     /// うまくいった場合はClosedOrderを返す（ほとんどの場合はErrを返す(前回から変化が小さいのでなにもしていない）
     /// 約定は、一つ下の刻みのログが発生したらカウントする。
     /// 超巨大オーダがきた場合でも複数約定はさせず、次回に回す。
-    pub fn execute(
+    pub fn consume(
         &mut self,
-        current_time: MicroSec,
-        price: f64,
-        size: f64,
+        trade: &Trade
     ) -> Result<OrderResult, OrderStatus> {
         if self.has_q() == false {
             return Err(OrderStatus::NoAction);
         }
 
-        if self.execute_remain_size(price, size) {
-            return self.pop_close_order(current_time);
+        if self.execute_remain_size(trade) {
+            return self.pop_closed_order(trade.time);
         }
 
         return Err(OrderStatus::NoAction);
@@ -149,19 +166,19 @@ impl OrderQueue {
     /// キューの中に処理できるオーダーがあれば、size_remainをへらしていく。
     /// size_remainが０になったらオーダ完了の印。
     /// 実際の取り出しは pop_close_orderで実施する。
-    fn execute_remain_size(&mut self, price: f64, size: f64) -> bool {
+    fn execute_remain_size(&mut self, trade: &Trade) -> bool {
         if self.has_q() == false {
             return false;
         }
 
         let l = self.q.len();
-        let mut size_remain = size;
+        let mut size_remain = trade.size;
         let mut complete_order = false;
 
         // 順番に価格条件をみたしたものから約定したこととし、remain_sizeをへらしていく。
         for i in 0..l {
-            if ((self.buy_queue == true) && (price  < self.q[i].price))          // Buy Case
-                || ((self.buy_queue == false) && (self.q[i].price < price))
+            if ((self.buy_queue == true) && (trade.price  < self.q[i].price))          // Buy Case
+                || ((self.buy_queue == false) && (self.q[i].price < trade.price))
             // Sell case
             {
                 if self.q[i].remain_size <= size_remain {
@@ -184,7 +201,7 @@ impl OrderQueue {
     }
 
     ///　全額処理されたオーダをキューから取り出し ClosedOrderオブジェクトを作る。
-    fn pop_close_order(&mut self, current_time: MicroSec) -> Result<OrderResult, OrderStatus> {
+    fn pop_closed_order(&mut self, current_time: MicroSec) -> Result<OrderResult, OrderStatus> {
         let l = self.q.len();
 
         for i in 0..l {
@@ -203,15 +220,12 @@ impl OrderQueue {
     }
 }
 
-
-
-
 #[derive(Debug, Clone, Copy)]
 ///　ポジションの１項目
 /// 　Positionsでポジションリストを扱う。
 pub struct Position {
     price: f64,
-    home_size: f64,      // ポジションは証拠金通貨単位(home_size)
+    home_size: f64, // ポジションは証拠金通貨単位(home_size)
 }
 
 impl Position {
@@ -266,7 +280,7 @@ impl Position {
         match order.order_side {
             OrderSide::Buy => {
                 order.profit = (order.open_price - order.close_price) * order.foreign_size;
-            },
+            }
             OrderSide::Sell => {
                 order.profit = (order.close_price - order.open_price) * order.foreign_size;
             }
@@ -283,7 +297,6 @@ impl Position {
 
         return Ok(());
     }
-
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -424,78 +437,81 @@ impl Positions {
     }
 }
 
-
 ///-------------------------------------------------------------------------------------
 /// TEST SECTION
 /// ------------------------------------------------------------------------------------
-#[allow(unused)]
+///
 #[cfg(test)]
-fn test_build_closed_order(order_type: OrderSide, price: f64, size: f64) -> OrderResult {
-    let sell_order01 = Order::new(
-        1,
-        "neworder".to_string(),
-        order_type,
-        true,
-        100,
-        price,
-        size,
-        "".to_string(),
-    );
+mod test_order_positon {
+    use super::*;
+    #[cfg(test)]
+    fn test_build_closed_order(order_type: OrderSide, price: f64, size: f64) -> OrderResult {
+        let sell_order01 = Order::new(
+            1,
+            "neworder".to_string(),
+            order_type,
+            true,
+            100,
+            price,
+            size,
+            "".to_string(),
+        );
 
-    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::ClosePosition);
+        let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::ClosePosition);
 
-    return sell_close01;
-}
+        return sell_close01;
+    }
 
-#[cfg(test)]
-fn test_build_orders() -> Vec<OrderResult> {
-    let sell_order01 = Order::new(
-        1,
-        "neworder".to_string(),
-        OrderSide::Sell,
-        true,
-        100,
-        200.0,
-        200.0,
-        "".to_string(),
-    );
+    #[cfg(test)]
+    fn test_build_orders() -> Vec<OrderResult> {
+        let sell_order01 = Order::new(
+            1,
+            "neworder".to_string(),
+            OrderSide::Sell,
+            true,
+            100,
+            200.0,
+            200.0,
+            "".to_string(),
+        );
 
-    let sell_open00 = OrderResult::from_order(2, &sell_order01, OrderStatus::InOrder);
+        let sell_open00 = OrderResult::from_order(2, &sell_order01, OrderStatus::InOrder);
 
-    let mut sell_open01 = sell_open00.clone();
-    sell_open01.order_id = "aa".to_string();
-    let sell_open02 = sell_open00.clone();
-    let sell_open03 = sell_open00.clone();
-    let sell_open04 = sell_open00.clone();
+        let mut sell_open01 = sell_open00.clone();
+        sell_open01.order_id = "aa".to_string();
+        let sell_open02 = sell_open00.clone();
+        let sell_open03 = sell_open00.clone();
+        let sell_open04 = sell_open00.clone();
 
-    let buy_order = Order::new(
-        1,
-        "buyorder".to_string(),
-        OrderSide::Buy,
-        true,
-        100,
-        50.0,
-        100.0,
-        "".to_string(),
-    );
-    let buy_close00 = OrderResult::from_order(2, &buy_order, OrderStatus::InOrder);
-    let buy_close01 = buy_close00.clone();
-    let buy_close02 = buy_close00.clone();
-    let buy_close03 = buy_close00.clone();
-    let buy_close04 = buy_close00.clone();
+        let buy_order = Order::new(
+            1,
+            "buyorder".to_string(),
+            OrderSide::Buy,
+            true,
+            100,
+            50.0,
+            100.0,
+            "".to_string(),
+        );
+        let buy_close00 = OrderResult::from_order(2, &buy_order, OrderStatus::InOrder);
+        let buy_close01 = buy_close00.clone();
+        let buy_close02 = buy_close00.clone();
+        let buy_close03 = buy_close00.clone();
+        let buy_close04 = buy_close00.clone();
 
-    return vec![
-        sell_open00,
-        sell_open01,
-        sell_open02,
-        sell_open03,
-        sell_open04,
-        buy_close00,
-        buy_close01,
-        buy_close02,
-        buy_close03,
-        buy_close04,
-    ];
+        return vec![
+            sell_open00,
+            sell_open01,
+            sell_open02,
+            sell_open03,
+            sell_open04,
+            buy_close00,
+            buy_close01,
+            buy_close02,
+            buy_close03,
+            buy_close04,
+        ];
+    }
 }
 
 #[cfg(test)]
@@ -522,42 +538,45 @@ mod test_position {
         assert_eq!(position.price, 200.0);
         assert_eq!(position.home_size, 200.0);
 
-
         // 購入平均単価へposition が更新されることの確認
         let _r = position.open_position(&mut orders[2]); // price 200.0, size 200.0
         println!("{:?} {:?}", position, orders[2]);
         assert_eq!(position.price, 200.0);
-        assert_eq!(position.home_size, 200.0+200.0);
+        assert_eq!(position.home_size, 200.0 + 200.0);
 
         let _r = position.open_position(&mut orders[3]);
         println!("{:?} {:?}", position, orders[3]);
         assert_eq!(position.price, 200.0);
-        assert_eq!(position.home_size, 200.0+200.0+200.0);
+        assert_eq!(position.home_size, 200.0 + 200.0 + 200.0);
 
         let _r = position.open_position(&mut orders[4]);
         println!("{:?} {:?}", position, orders[4]);
         assert_eq!(position.price, 200.0);
-        assert_eq!(position.home_size, 200.0+200.0+200.0+200.0);
+        assert_eq!(position.home_size, 200.0 + 200.0 + 200.0 + 200.0);
 
         let _r = position.open_position(&mut orders[5]); // price 50.0, size 100.0
         println!("{:?} {:?}", position, orders[5]);
         assert_eq!(orders[5].price, 50.0);
         assert_eq!(orders[5].home_size, 100.0);
-        assert_eq!(position.price, ((200.0*800.0)+(50.0*100.0))/(800.0+100.0));
-        assert_eq!(position.home_size, 200.0+200.0+200.0+200.0+100.0); // 900.0
-
+        assert_eq!(
+            position.price,
+            ((200.0 * 800.0) + (50.0 * 100.0)) / (800.0 + 100.0)
+        );
+        assert_eq!(position.home_size, 200.0 + 200.0 + 200.0 + 200.0 + 100.0); // 900.0
 
         // ポジションのクローズのテスト（小さいオーダーのクローズ
         println!("-- CLOSE ---");
         let _r = position.close_position(&mut orders[6]); // price 50.0, size 100.0
         println!("{:?} {:?}", position, orders[6]);
         assert_eq!(position.home_size, 200.0 * 4.0 + 100.0 - 100.0); // 数は減る 800.0
-        let last_price =  ((200.0*800.0)+(50.0*100.0))/(800.0+100.0);
+        let last_price = ((200.0 * 800.0) + (50.0 * 100.0)) / (800.0 + 100.0);
         assert_eq!(position.price, last_price); // 単価は同じ
         assert_eq!(orders[6].open_price, last_price);
         assert_eq!(orders[6].close_price, 50.0);
-        assert_eq!(orders[6].profit, (last_price - 50.0)*(orders[6].foreign_size));
-
+        assert_eq!(
+            orders[6].profit,
+            (last_price - 50.0) * (orders[6].foreign_size)
+        );
 
         //ポジションクローズのテスト（大きいオーダーのクローズではエラーがかえってくる）
         println!("-- CLOSE BIG ---");
@@ -640,7 +659,6 @@ mod test_positions {
     }
 }
 
-
 /*
 [OrderResult { timestamp: 5, order_id: "0000-000000000000-001", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 2, status: OpenPosition, open_price: 50.0, close_price: 0.0, size: 10.0, volume: 0.2, profit: 0.0, fee: 0.005999999999999999, total_profit: -0.005999999999999999 },
 OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 0, order_type: Sell, post_only: true, create_time: 5, status: ClosePosition, open_price: 50.0, close_price: 40.0, size: 10.0, volume: 0.25, profit: 2.5, fee: 0.005999999999999999, total_profit: 2.494 },
@@ -656,14 +674,9 @@ TODO:  ポジションクローズができない。
 
 */
 
-
 /////////////////////////////////////////////////////////////////////////////////
 // TEST
 ///////////////////////////////////////////////////////////////////////////////
-
-
-
-
 
 #[cfg(test)]
 mod order_side_test {
@@ -686,7 +699,6 @@ mod order_side_test {
         assert_eq!(OrderSide::Sell.to_string(), "Sell");
     }
 }
-
 
 #[cfg(test)]
 mod closed_order_test {
@@ -714,7 +726,10 @@ mod closed_order_test {
         assert_eq!(close_order.home_size, 50.0);
         assert_eq!(result.home_size, 51.0);
 
-        assert_eq!(101.0/100.1, result.foreign_size + close_order.foreign_size);
+        assert_eq!(
+            101.0 / 100.1,
+            result.foreign_size + close_order.foreign_size
+        );
     }
 }
 
@@ -731,7 +746,7 @@ fn make_orders(buy_order: bool) -> OrderQueue {
         100,
         100.0,
         100.0,
-        "".to_string(),        
+        "".to_string(),
     );
     let o2 = Order::new(
         3,
@@ -741,7 +756,7 @@ fn make_orders(buy_order: bool) -> OrderQueue {
         200,
         100.0,
         50.0,
-        "".to_string(),        
+        "".to_string(),
     );
     let o3 = Order::new(
         2,
@@ -751,7 +766,7 @@ fn make_orders(buy_order: bool) -> OrderQueue {
         300,
         200.0,
         200.0,
-        "".to_string(),        
+        "".to_string(),
     );
     let o4 = Order::new(
         1,
@@ -761,7 +776,7 @@ fn make_orders(buy_order: bool) -> OrderQueue {
         400,
         200.0,
         50.0,
-        "".to_string(),        
+        "".to_string(),
     );
 
     orders.queue_order(&o1);
@@ -803,9 +818,9 @@ mod test_orders {
 
         assert_eq!(orders.q[0].remain_size, 50.0);
         assert_eq!(orders.q[1].remain_size, 200.0);
-        assert_eq!(orders.execute_remain_size(1000.0, 125.0), false);
-        assert_eq!(orders.execute_remain_size(200.0, 125.0), false);
-        assert_eq!(orders.execute_remain_size(199.9, 125.0), true);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 200.0, size:125.0, liquid: false, id: "".to_string() }), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 199.0, size:125.0, liquid: false, id: "".to_string() }), false);
 
         println!("--after--");
         println!("{:?}", orders.q[0]);
@@ -831,10 +846,12 @@ mod test_orders {
 
         assert_eq!(orders.q[0].remain_size, 100.0);
         assert_eq!(orders.q[1].remain_size, 50.0);
-        assert_eq!(orders.execute_remain_size(99.9, 125.0), false);
-        assert_eq!(orders.execute_remain_size(100.0, 125.0), false);
+        // TODO: Upadte size
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
+
         // まだ約定していない。
-        match orders.pop_close_order(1000) {
+        match orders.pop_closed_order(1000) {
             Ok(order) => {
                 println!("err {:?}", order);
                 assert!(false)
@@ -844,13 +861,13 @@ mod test_orders {
             }
         }
 
-        assert_eq!(orders.execute_remain_size(100.1, 125.0), true);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }), true);
         println!("--after--");
         assert_eq!(orders.q[0].remain_size, 0.0);
         assert_eq!(orders.q[1].remain_size, 25.0);
 
         // １件約定した。
-        match orders.pop_close_order(1000) {
+        match orders.pop_closed_order(1000) {
             Ok(order) => {
                 assert_eq!(order.order_id, "low price");
                 assert_eq!(orders.q.len(), 3);
@@ -862,7 +879,7 @@ mod test_orders {
         }
 
         // もおういちどとりだしてもでてこない。
-        match orders.pop_close_order(1001) {
+        match orders.pop_closed_order(1001) {
             Ok(_order) => {
                 assert!(false);
             }
@@ -872,8 +889,8 @@ mod test_orders {
         }
 
         // ログをおくったら約定する。
-        assert_eq!(orders.execute_remain_size(100.1, 125.0), true);
-        match orders.pop_close_order(1001) {
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }), true);
+        match orders.pop_closed_order(1001) {
             Ok(order) => {
                 assert_eq!(order.order_id, "low price but later");
                 assert_eq!(orders.q.len(), 2);
@@ -929,6 +946,4 @@ mod test_orders {
             }
         }
     }
-
 }
-

@@ -13,7 +13,7 @@ pub fn to_seconds(microsecond: MicroSec) -> f64 {
     return (microsecond as f64) / (MICRO_SECOND as f64);
 }
 
-pub fn to_naivedatetime(microsecond: MicroSec) -> NaiveDateTime {
+pub fn to_naive_datetime(microsecond: MicroSec) -> NaiveDateTime {
     let sec = microsecond / MICRO_SECOND;
     let nano = ((microsecond % MICRO_SECOND) * 1_000) as u32;
     let datetime = NaiveDateTime::from_timestamp(sec, nano);
@@ -34,7 +34,7 @@ pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
 pub fn CEIL(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     let unit_sec_micro = SEC(unit_sec);
 
-    let floor = (((microsecond+unit_sec_micro-1) / unit_sec_micro as i64)) * unit_sec_micro;
+    let floor = ((microsecond+unit_sec_micro-1) / unit_sec_micro as i64) * unit_sec_micro;
 
     return floor;
 }
@@ -44,7 +44,7 @@ pub fn CEIL(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
 
 #[pyfunction]
 pub fn time_string(t: MicroSec) -> String {
-    let datetime = to_naivedatetime(t);
+    let datetime = to_naive_datetime(t);
 
     // return datetime.format("%Y-%m-%d-%H:%M:%S.").to_string() + format!("{:06}", nano).as_str();
     return datetime.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
@@ -57,31 +57,35 @@ pub fn parse_time(t: &str) -> MicroSec {
     return datetime.unwrap().timestamp_micros();
 }
 
-
+#[allow(non_snake_case)]
 #[pyfunction]
 pub fn DAYS(days: i64) -> MicroSec {
     return (24 * 60 * 60 * MICRO_SECOND * days) as MicroSec;
 }
 
+#[allow(non_snake_case)]
 #[pyfunction]
 pub fn HHMM(hh: i64, mm: i64) -> MicroSec {
     return ((hh * 60 * 60)*MICRO_SECOND + MIN(mm)) as MicroSec;
 }
 
+#[allow(non_snake_case)]
 pub fn MIN(sec: i64) -> MicroSec {
     return sec * MICRO_SECOND * 60;
 }
 
+#[allow(non_snake_case)]
 pub fn SEC(sec: i64) -> MicroSec {
     return sec * MICRO_SECOND as MicroSec;
 }
 
 
 ///
-/// 現在時刻を返す(Microsec)
+/// 現在時刻を返す(Microsecond)
 /// ```
 /// println!("{:?}", NOW());
 /// ```
+#[allow(non_snake_case)]
 #[pyfunction]
 pub fn NOW() -> MicroSec {
     return Utc::now().timestamp_micros();
@@ -133,7 +137,7 @@ mod time_test {
     }
 
     #[test]
-    fn test_FLOOR() {
+    fn test_floor() {
         assert_eq!(        0, FLOOR(  999_999, 1));                
         assert_eq!(1_000_000, FLOOR(1_000_000, 1));        
         assert_eq!(1_000_000, FLOOR(1_000_111, 1));
@@ -143,7 +147,7 @@ mod time_test {
     }
 
     #[test]
-    fn test_CEIL() {
+    fn test_ceil() {
         assert_eq!(1_000_000, CEIL(  999_999, 1));                
         assert_eq!(1_000_000, CEIL(1_000_000, 1));
         assert_eq!(2_000_000, CEIL(1_000_001, 1));        

@@ -89,12 +89,9 @@ impl BackTester {
 
                         let mut tick_result: Vec<OrderResult> = vec![];
 
-                        session.main_exec_event(
+                        session.process_trade(
+                            &t,
                             &mut tick_result,
-                            t.time,
-                            t.order_side,
-                            t.price,
-                            t.size,
                         );
                         s = Py::new(py, session).unwrap();
                         s = self.tick(s, agent, &t);
