@@ -1,6 +1,5 @@
 use crate::common::order::Trade;
-use crate::common::time::{to_naive_datetime, MicroSec, MICRO_SECOND, NANO_SECOND, SEC, time_string};
-use chrono::NaiveDateTime;
+use crate::common::time::{MicroSec, SEC, time_string};
 use polars::prelude::ChunkCompare;
 use polars::prelude::DataFrame;
 use polars::prelude::Duration;
@@ -14,7 +13,6 @@ use polars_lazy::dsl::IntoLazy;
 use polars_lazy::prelude::col;
 use polars_time::ClosedWindow;
 
-use super::sqlite::Ohlcvv;
 
 #[allow(non_upper_case_globals)]
 #[allow(non_snake_case)]
@@ -26,6 +24,7 @@ pub mod KEY {
     pub const size: &str = "size";
     pub const order_side: &str = "order_side";
     pub const liquid: &str = "liquid";
+    #[allow(unused)]
     pub const id: &str = "id";
 
     // for ohlcv
@@ -34,9 +33,13 @@ pub mod KEY {
     pub const low: &str = "low";
     pub const close: &str = "close";
     pub const vol: &str = "vol";
+    #[allow(unused)]    
     pub const sell_vol: &str = "sell_vol";
+    #[allow(unused)]    
     pub const sell_count: &str = "sell_count";
+    #[allow(unused)]    
     pub const buy_vol: &str = "buy_vol";
+    #[allow(unused)]    
     pub const buy_count: &str = "buy_count";
     pub const start_time: &str = "start_time";
     pub const end_time: &str = "end_time";
@@ -177,7 +180,7 @@ pub fn ohlcv_from_ohlcv_df(
         .unwrap();
 }
 
-
+/*
 ///
 /// SQL DBには、Tickデータを保存する。
 /// インメモリーDBとしてPolarsを利用し、１秒足のOHLCV拡張を保存する。
@@ -318,72 +321,6 @@ impl OhlcvDataFrame {
         return OhlcvDataFrame { df };
     }
 }
-
-/*
-pub fn ohlcv_df_from_ohlc(
-    df: &DataFrame,
-    mut current_time_ms: i64,
-    width_sec: i64,
-    count: i64,
-) -> DataFrame {
-    if current_time_ms <= 0 {
-        current_time_ms = df.column("timestamp").unwrap().max().unwrap();
-    }
-
-    let width_ms = width_sec * 1_000;
-
-    // println!("count{} width_sec{} width_ms{}", count, width_sec, width_ms);
-
-    let mut start_time_ms = 0;
-    if count != 0 {
-        current_time_ms - (width_ms * (count as i64));
-    }
-
-    //return ohlcv_from_ohlcv(&df, start_time_ms, end_time_ms, width_sec);
-    return ohlcv_from_ohlcv_dynamic(&mut df, width_sec);
-}
-
-///
-/// TODO: グループ化の単位を個数に変えられないか？　→ Dollbarへの拡張を可能とするため。
-fn ohlcv_from_ohlcv_dynamic(
-    df: &mut DataFrame,
-    width_sec: i64,
-) -> DataFrame {
-    // TODO  あとで性能を計測する。
-//    let df = df.clone();
-
-    return df
-        .lazy()
-        .groupby_dynamic(
-            vec![],
-            DynamicGroupOptions {
-                index_column: "timestamp".into(),
-                every: Duration::new(width_sec * NANO_SECOND), // グループ間隔
-                period: Duration::new(width_sec * NANO_SECOND), // データ取得の幅（グループ間隔と同じでOK)
-                offset: Duration::new(0),
-                truncate: true,            // タイムスタンプを切り下げてまとめる。
-                include_boundaries: false, // データの下限と上限を結果に含めるかどうか？(falseでOK)
-                closed_window: ClosedWindow::Left, // t <=  x  < t+1       開始時間はWindowに含まれる。終了は含まれない(CloseWindow::Left)。
-            },
-        )
-        .agg([
-            col("open").first().alias("open"),
-            col("high").max().alias("high"),
-            col("low").min().alias("low"),
-            col("close").last().alias("close"),
-            col("vol").sum().alias("vol"),
-        ])
-        .sort(
-            "timestamp",
-            SortOptions {
-                descending: false,
-                nulls_last: false,
-            },
-        )
-        .collect()
-        .unwrap();
-}
-
 */
 
 pub struct TradeBuffer {
@@ -405,6 +342,7 @@ impl TradeBuffer {
         };
     }
 
+    #[allow(unused)]
     pub fn clear(&mut self) {
         self.time_stamp.clear();
         self.price.clear();
@@ -413,6 +351,7 @@ impl TradeBuffer {
         self.liquid.clear();
     }
 
+    #[allow(unused)]
     pub fn push_trades(&mut self, trades: Vec<Trade>) {
         for trade in trades {
             self.push_trade(&trade);

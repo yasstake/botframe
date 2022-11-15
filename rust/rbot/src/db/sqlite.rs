@@ -1,19 +1,15 @@
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
-
 use crate::common::order::{TimeChunk, Trade};
-use crate::common::time::{time_string, to_seconds, MicroSec, FLOOR, CEIL, MICRO_SECOND, NOW, DAYS, SEC};
+use crate::common::time::{time_string, MicroSec, CEIL, DAYS, FLOOR, MICRO_SECOND, NOW, SEC};
 use crate::OrderSide;
 use polars::prelude::DataFrame;
-use rusqlite::{params, params_from_iter, Connection, Error, Result, MappedRows, Rows, Statement};
+use rusqlite::{params, params_from_iter, Connection, Error, Result, Statement};
 
-use super::df::{OhlcvBuffer, merge_df, ohlcv_from_ohlcv_df};
-use crate::db::df::TradeBuffer;
-use crate::db::df::ohlcv_df;
-use crate::db::df::start_time_df;
+use super::df::{merge_df, ohlcv_from_ohlcv_df};
 use crate::db::df::end_time_df;
+use crate::db::df::ohlcv_df;
 use crate::db::df::select_df;
+use crate::db::df::start_time_df;
+use crate::db::df::TradeBuffer;
 
 use log::log_enabled;
 use log::Level::Debug;
@@ -21,13 +17,8 @@ use log::Level::Debug;
 use crate::db::df::KEY;
 use polars::prelude::Float64Type;
 
-use numpy::IntoPyArray;
-use numpy::PyArray2;
-
-
-
+/*
 // TODO: データベースがない（０件）場合のエラー処理。
-
 #[derive(Debug, Clone, Copy)]
 pub struct Ohlcvv {
     pub time: f64,
@@ -92,8 +83,9 @@ impl Ohlcvv {
         }
     }
 }
+*/
 
-fn check_skip_time(mut trades: &Vec<Trade>) {
+fn check_skip_time(trades: &Vec<Trade>) {
     if log_enabled!(Debug) {
         let mut last_time: MicroSec = 0;
         let mut last_id: String = "".to_string();
@@ -124,17 +116,15 @@ pub struct TradeTable {
 }
 
 impl TradeTable {
-    const OHLCV_WINDOW_SEC: i64 = 60;        // min
+    const OHLCV_WINDOW_SEC: i64 = 60; // min
 
     pub fn ohlcv_start(t: MicroSec) -> MicroSec {
         return FLOOR(t, TradeTable::OHLCV_WINDOW_SEC);
     }
 
-
     pub fn ohlcv_end(t: MicroSec) -> MicroSec {
         return CEIL(t, TradeTable::OHLCV_WINDOW_SEC);
     }
-
 
     pub fn open(name: &str) -> Result<Self, Error> {
         let result = Connection::open(name);
@@ -148,9 +138,9 @@ impl TradeTable {
                     file_name: name.to_string(),
                     connection: conn,
                     cache_df: df,
-                    cache_ohlcv: ohlcv
+                    cache_ohlcv: ohlcv,
                 })
-            },
+            }
             Err(e) => {
                 println!("{:?}", e);
                 return Err(e);
@@ -193,8 +183,8 @@ impl TradeTable {
     where
         F: FnMut(&Trade),
     {
-        let mut sql = "";
-        let mut param = vec![];
+        let sql: &str;
+        let param: Vec<i64>;
 
         if 0 < to_time {
             sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
@@ -229,7 +219,7 @@ impl TradeTable {
 
         for trade in _transaction_iter {
             match trade {
-                Ok(mut t) => {
+                Ok(t) => {
                     f(&t);
                 }
                 Err(e) => log::error!("{:?}", e),
@@ -243,63 +233,63 @@ impl TradeTable {
     }
 
     /*
-    // 
-    pub fn select_iter(&mut self, from_time: MicroSec, to_time: MicroSec) -> Result<Rows, Error> {
-        let mut sql = "";
-        let mut param = vec![];
+        //
+        pub fn select_iter(&mut self, from_time: MicroSec, to_time: MicroSec) -> Result<Rows, Error> {
+            let mut sql = "";
+            let mut param = vec![];
 
-        if 0 < to_time {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
-            param = vec![from_time, to_time];
-        } else {
-            //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-            param = vec![from_time];
-        }
-
-        let mut statement = self.connection.prepare(sql).unwrap();
-
-        let start_time = NOW();
-
-//        let rows = statement.query(params_from_iter(param.iter()));
-        return statement.query(params_from_iter(param.iter()));
-
-    }
-    */
-/*
-        match rows {
-            Ok(r) => {
-                return r;
-            },
-            Err(e) => {
-                log::warn!("select error = {}", e);
-                panic!("");
+            if 0 < to_time {
+                sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
+                param = vec![from_time, to_time];
+            } else {
+                //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+                sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+                param = vec![from_time];
             }
+
+            let mut statement = self.connection.prepare(sql).unwrap();
+
+            let start_time = NOW();
+
+    //        let rows = statement.query(params_from_iter(param.iter()));
+            return statement.query(params_from_iter(param.iter()));
+
         }
-
-        /*
-        let transaction_iter = statement
-            .query_map(params_from_iter(param.iter()), |row| {
-                let bs_str: String = row.get_unwrap(1);
-                let bs = OrderSide::from_str(bs_str.as_str());
-
-                Ok(Trade {
-                    time: row.get_unwrap(0),
-                    price: row.get_unwrap(2),
-                    size: row.get_unwrap(3),
-                    order_side: bs,
-                    liquid: row.get_unwrap(4),
-                    id: row.get_unwrap(5),
-                })
-            })
-            .unwrap();
-
-        log::debug!("create iter {} microsec", NOW() - start_time);
-
-        return transaction_iter;
         */
-    }
-*/
+    /*
+            match rows {
+                Ok(r) => {
+                    return r;
+                },
+                Err(e) => {
+                    log::warn!("select error = {}", e);
+                    panic!("");
+                }
+            }
+
+            /*
+            let transaction_iter = statement
+                .query_map(params_from_iter(param.iter()), |row| {
+                    let bs_str: String = row.get_unwrap(1);
+                    let bs = OrderSide::from_str(bs_str.as_str());
+
+                    Ok(Trade {
+                        time: row.get_unwrap(0),
+                        price: row.get_unwrap(2),
+                        size: row.get_unwrap(3),
+                        order_side: bs,
+                        liquid: row.get_unwrap(4),
+                        id: row.get_unwrap(5),
+                    })
+                })
+                .unwrap();
+
+            log::debug!("create iter {} microsec", NOW() - start_time);
+
+            return transaction_iter;
+            */
+        }
+    */
     pub fn select_df_from_db(&mut self, from_time: MicroSec, to_time: MicroSec) -> DataFrame {
         let mut buffer = TradeBuffer::new();
 
@@ -315,81 +305,116 @@ impl TradeTable {
     }
 
     pub fn update_cache_df(&mut self, from_time: MicroSec, to_time: MicroSec) {
-        let mut df_start_time = 0;
-        
+        let df_start_time: i64;
+
         match start_time_df(&self.cache_df) {
-            Some(t) => {df_start_time = t;}
+            Some(t) => {
+                df_start_time = t;
+            }
             _ => {
-                log::debug!("cache update all {} -> {}", time_string(from_time), time_string(to_time));
+                log::debug!(
+                    "cache update all {} -> {}",
+                    time_string(from_time),
+                    time_string(to_time)
+                );
                 // no cache / update all
                 self.load_df(from_time, to_time);
 
                 // update ohlcv
-                self.cache_ohlcv = ohlcv_df(&self.cache_df, TradeTable::ohlcv_start(from_time), to_time, TradeTable::OHLCV_WINDOW_SEC);
+                self.cache_ohlcv = ohlcv_df(
+                    &self.cache_df,
+                    TradeTable::ohlcv_start(from_time),
+                    to_time,
+                    TradeTable::OHLCV_WINDOW_SEC,
+                );
                 return;
             }
         }
 
-        let mut df_end_time = end_time_df(&self.cache_df).unwrap();
-
-        /*
-        TODO: realtime モードのときだけ削除するように変更。
-        // delete cache
-        if df_start_time + DAYS(7) < from_time || to_time + DAYS(7) < df_end_time {
-            log::debug!("delete cache");
-            self.cache_df = select_df(&self.cache_df, from_time - DAYS(3), to_time+ DAYS(3));
-            df_start_time = start_time_df(&self.cache_df).unwrap();
-            df_end_time = end_time_df(&self.cache_df).unwrap();
-        }
-        */
+        let df_end_time = end_time_df(&self.cache_df).unwrap();
 
         // load data and merge cache
         if from_time < df_start_time {
             let df1 = &self.select_df_from_db(from_time, df_start_time);
-            log::debug!("load data before cache df1={:?} df2={:?}", df1.shape(), self.cache_df.shape());            
+            log::debug!(
+                "load data before cache df1={:?} df2={:?}",
+                df1.shape(),
+                self.cache_df.shape()
+            );
             self.cache_df = merge_df(&df1, &self.cache_df);
 
             // update ohlcv
             let ohlcv1_start = TradeTable::ohlcv_start(from_time);
             let ohlcv1_end = TradeTable::ohlcv_start(df_start_time);
 
-            log::debug!("cache update diff before {} -> {}", time_string(ohlcv1_start), time_string(ohlcv1_end));
-            let ohlcv1 = ohlcv_df(&self.cache_df, ohlcv1_start, ohlcv1_end, TradeTable::OHLCV_WINDOW_SEC);
-            let ohlcv2 = select_df(&self.cache_ohlcv, ohlcv1_end, 0);            
-            self.cache_ohlcv = merge_df(&ohlcv1, &self.cache_ohlcv);
+            log::debug!(
+                "cache update diff before {} -> {}",
+                time_string(ohlcv1_start),
+                time_string(ohlcv1_end)
+            );
+            let ohlcv1 = ohlcv_df(
+                &self.cache_df,
+                ohlcv1_start,
+                ohlcv1_end,
+                TradeTable::OHLCV_WINDOW_SEC,
+            );
+
+            let ohlcv2 = select_df(&self.cache_ohlcv, ohlcv1_end, 0);
+            self.cache_ohlcv = merge_df(&ohlcv1, &ohlcv2);
         }
 
         if df_end_time < to_time {
             let df2 = &self.select_df_from_db(df_end_time, to_time);
 
-            log::debug!("load data AFTER cache df1={:?} df2={:?}", self.cache_df.shape(), df2.shape());
+            log::debug!(
+                "load data AFTER cache df1={:?} df2={:?}",
+                self.cache_df.shape(),
+                df2.shape()
+            );
             self.cache_df = merge_df(&self.cache_df, &df2);
 
             // update ohlcv
             let ohlcv2_start = TradeTable::ohlcv_start(from_time);
-            let ohlcv2_end = TradeTable::ohlcv_start(to_time);
+            //let ohlcv2_end = TradeTable::ohlcv_start(to_time);
 
-            log::debug!("cache update diff after {} -> {}", time_string(ohlcv2_start), time_string(ohlcv2_end));
+            log::debug!(
+                "cache update diff after {} ",
+                time_string(ohlcv2_start),
+            );
             let ohlcv1 = select_df(&self.cache_ohlcv, 0, ohlcv2_start);
-            let ohlcv2 = ohlcv_df(&self.cache_df, ohlcv2_start, ohlcv2_end, TradeTable::OHLCV_WINDOW_SEC);
+            let ohlcv2 = ohlcv_df(
+                &self.cache_df,
+                ohlcv2_start,
+                0,
+                TradeTable::OHLCV_WINDOW_SEC,
+            );
 
-            self.cache_ohlcv = merge_df(&ohlcv1, &ohlcv2);                        
+            self.cache_ohlcv = merge_df(&ohlcv1, &ohlcv2);
         }
     }
 
-    pub fn ohlcv_df(&mut self, from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> DataFrame {
+    pub fn ohlcv_df(
+        &mut self,
+        from_time: MicroSec,
+        to_time: MicroSec,
+        time_window_sec: i64,
+    ) -> DataFrame {
         self.update_cache_df(from_time, to_time);
 
         if time_window_sec % TradeTable::OHLCV_WINDOW_SEC == 0 {
             ohlcv_from_ohlcv_df(&self.cache_ohlcv, from_time, to_time, time_window_sec)
-        }
-        else {
+        } else {
             ohlcv_df(&self.cache_df, from_time, to_time, time_window_sec)
         }
     }
 
-    pub fn ohlcv_array(&mut self, mut from_time: MicroSec, to_time: MicroSec, time_window_sec: i64) -> ndarray::Array2<f64> {
-        from_time = TradeTable::ohlcv_start(from_time);      // 開始tickは確定足、終了は未確定足もOK.
+    pub fn ohlcv_array(
+        &mut self,
+        mut from_time: MicroSec,
+        to_time: MicroSec,
+        time_window_sec: i64,
+    ) -> ndarray::Array2<f64> {
+        from_time = TradeTable::ohlcv_start(from_time); // 開始tickは確定足、終了は未確定足もOK.
 
         let df = self.ohlcv_df(from_time, to_time, time_window_sec);
 
@@ -404,7 +429,7 @@ impl TradeTable {
                 KEY::vol,
                 KEY::count,
                 KEY::start_time,
-                KEY::end_time
+                KEY::end_time,
             ])
             .unwrap()
             .to_ndarray::<Float64Type>()
@@ -476,11 +501,12 @@ impl TradeTable {
                 <tr><td><b>path=</b>{}</td></tr>                
                 </table>                
                 "#,
-                min, max,
+                min,
+                max,
                 time_string(min),
                 time_string(max),
                 count,
-                (max - min)/DAYS(1),
+                (max - min) / DAYS(1),
                 self.file_name,
             ))
         });
@@ -491,15 +517,18 @@ impl TradeTable {
         let mut table:String = "<table><caption>Data Gap</caption><tr><th>start</th><th>end</th><th>days ago</th></tr>".to_string();
         for c in chunks {
             let days_ago = (NOW() - c.start) / DAYS(1);
-            table += &format!("<tr><td>{:?}</td><td>{:?}</td><td>{}</td></tr>", time_string(c.start), time_string(c.end), days_ago);
+            table += &format!(
+                "<tr><td>{:?}</td><td>{:?}</td><td>{}</td></tr>",
+                time_string(c.start),
+                time_string(c.end),
+                days_ago
+            );
         }
         table += "</table>";
 
-
         if r.is_ok() {
             r.unwrap() + &table
-        }
-        else {
+        } else {
             "<H2>NO DATA INTABLE</H2>".to_string()
         }
     }
@@ -527,7 +556,7 @@ impl TradeTable {
 
         return r;
     }
-    
+
     /// Find un-downloaded data time chunks.
     pub fn select_gap_chunks(
         &self,
@@ -548,7 +577,7 @@ impl TradeTable {
         // find after db time
         let mut c = self.find_time_chunk_to(from_time, to_time, allow_size);
         chunk.append(&mut c);
-        
+
         if chunk.len() == 0 && from_time != to_time {
             return vec![TimeChunk {
                 start: from_time,
@@ -564,19 +593,26 @@ impl TradeTable {
     pub fn find_time_chunk_from(
         &self,
         from_time: MicroSec,
-        to_time: MicroSec,
+        _to_time: MicroSec,
         allow_size: MicroSec,
     ) -> Vec<TimeChunk> {
         let db_start_time = match self.start_time() {
             Ok(t) => t,
-            Err(e) => {
+            Err(_e) => {
                 return vec![];
             }
         };
 
         if from_time + allow_size <= db_start_time {
-            log::debug!("before db {:?}-{:?}", time_string(from_time), time_string(db_start_time));
-            vec![TimeChunk {start: from_time, end: db_start_time}]
+            log::debug!(
+                "before db {:?}-{:?}",
+                time_string(from_time),
+                time_string(db_start_time)
+            );
+            vec![TimeChunk {
+                start: from_time,
+                end: db_start_time,
+            }]
         } else {
             vec![]
         }
@@ -589,20 +625,26 @@ impl TradeTable {
         allow_size: MicroSec,
     ) -> Vec<TimeChunk> {
         let mut db_end_time = match self.end_time() {
-
             Ok(t) => t,
-            Err(e) => {
+            Err(_e) => {
                 return vec![];
             }
         };
 
-        if db_end_time < from_time{
+        if db_end_time < from_time {
             db_end_time = from_time;
         }
 
         if db_end_time + allow_size < to_time {
-            log::debug!("after db {:?}-{:?}", time_string(db_end_time), time_string(to_time));                        
-            vec![TimeChunk {start: db_end_time, end: to_time}]
+            log::debug!(
+                "after db {:?}-{:?}",
+                time_string(db_end_time),
+                time_string(to_time)
+            );
+            vec![TimeChunk {
+                start: db_end_time,
+                end: to_time,
+            }]
         } else {
             vec![]
         }
@@ -612,7 +654,7 @@ impl TradeTable {
     pub fn select_time_chunks_in_db(
         &self,
         from_time: MicroSec,
-        to_time: MicroSec,
+        _to_time: MicroSec,
         allow_size: MicroSec,
     ) -> Vec<TimeChunk> {
         let mut chunks: Vec<TimeChunk> = vec![];
@@ -657,10 +699,8 @@ impl TradeTable {
         return chunks;
     }
 
-
-
     pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<i64, Error> {
-        let mut tx = self.connection.transaction()?;
+        let tx = self.connection.transaction()?;
 
         // let trades_len = trades.len();
         let mut insert_len = 0;
@@ -697,16 +737,11 @@ impl TradeTable {
         let result = tx.commit();
 
         match result {
-            Ok(_) => {
-                Ok(insert_len as i64)
-            },
-            Err(e) => {
-                return Err(e)
-            }
+            Ok(_) => Ok(insert_len as i64),
+            Err(e) => return Err(e),
         }
     }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///   Test Suite
@@ -721,11 +756,10 @@ mod test_transaction_table {
     use crate::common::init_log;
     use crate::common::time::time_string;
     use crate::common::time::DAYS;
-    use crate::common::time::HHMM;
     use crate::common::time::MICRO_SECOND;
     use crate::common::time::NOW;
-    use crate::fs::db_full_path;
     use crate::db::df::ohlcv_from_ohlcv_df;
+    use crate::fs::db_full_path;
 
     use super::*;
 
@@ -745,13 +779,13 @@ mod test_transaction_table {
     #[test]
     fn test_insert_table() {
         let mut tr = TradeTable::open("test.db").unwrap();
-        &tr.recreate_table();
+        tr.recreate_table();
 
         let rec1 = Trade::new(1, OrderSide::Buy, 10.0, 10.0, false, "abc1".to_string());
         let rec2 = Trade::new(2, OrderSide::Buy, 10.1, 10.2, false, "abc2".to_string());
         let rec3 = Trade::new(3, OrderSide::Buy, 10.2, 10.1, false, "abc3".to_string());
 
-        &tr.insert_records(&vec![rec1, rec2, rec3]);
+        let _r = tr.insert_records(&vec![rec1, rec2, rec3]);
     }
 
     #[test]
@@ -786,7 +820,7 @@ mod test_transaction_table {
     #[test]
     fn test_start_time() {
         let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        let db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let start_time = db.start_time();
 
@@ -798,7 +832,7 @@ mod test_transaction_table {
     #[test]
     fn test_select_gap_chunks() {
         let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        let db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let chunks = db.select_gap_chunks(NOW() - DAYS(1), NOW(), 1_000_000 * 13);
 
@@ -818,7 +852,7 @@ mod test_transaction_table {
     #[test]
     fn test_select_time_chunk_from() {
         let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        let db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let chunks = db.find_time_chunk_from(NOW() - DAYS(1), NOW(), 1_000_000 * 10);
 
@@ -832,7 +866,7 @@ mod test_transaction_table {
     #[test]
     fn test_select_time_chunk_to() {
         let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        let db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let chunks = db.find_time_chunk_to(NOW() - DAYS(1), NOW(), 1_000_000 * 120);
 
@@ -846,7 +880,7 @@ mod test_transaction_table {
     #[test]
     fn test_select_time_chunks() {
         let db_name = db_full_path("FTX", "BTC-PERP");
-        let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
+        let db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
         let chunks = db.select_time_chunks_in_db(NOW() - DAYS(1), NOW(), 1_000_000 * 10);
 
@@ -866,39 +900,35 @@ mod test_transaction_table {
 
         let start_timer = NOW();
         let now = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), now, 1);
+        let ohlcv = db.ohlcv_df(NOW() - DAYS(50), now, 1);
         println!("{:?}", ohlcv);
-        println!("{} [us]", NOW()-start_timer);
-        
-        let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
-        println!("{:?}", ohlcv);
-        println!("{} [us]", NOW()-start_timer);
+        println!("{} [us]", NOW() - start_timer);
 
         let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
+        let ohlcv = db.ohlcv_df(NOW() - DAYS(50), NOW(), 1);
         println!("{:?}", ohlcv);
-        println!("{} [us]", NOW()-start_timer);
+        println!("{} [us]", NOW() - start_timer);
 
         let start_timer = NOW();
-        let ohlcv = db.ohlcv_df(NOW()-DAYS(50), NOW(), 1);
+        let ohlcv = db.ohlcv_df(NOW() - DAYS(50), NOW(), 1);
         println!("{:?}", ohlcv);
-        println!("{} [us]", NOW()-start_timer);
+        println!("{} [us]", NOW() - start_timer);
 
         let start_timer = NOW();
-        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW()-DAYS(50), NOW(), 120);
+        let ohlcv = db.ohlcv_df(NOW() - DAYS(50), NOW(), 1);
+        println!("{:?}", ohlcv);
+        println!("{} [us]", NOW() - start_timer);
+
+        let start_timer = NOW();
+        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW() - DAYS(50), NOW(), 120);
         println!("{:?}", ohlcv2);
-        println!("{} [us]", NOW()-start_timer);
+        println!("{} [us]", NOW() - start_timer);
 
         let start_timer = NOW();
-        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW()-DAYS(1), NOW(), 60);
+        let ohlcv2 = ohlcv_from_ohlcv_df(&ohlcv, NOW() - DAYS(1), NOW(), 60);
         println!("{:?}", ohlcv2);
-        println!("{} [us]", NOW()-start_timer);
-
-
-
+        println!("{} [us]", NOW() - start_timer);
     }
-
 
     #[test]
     fn test_select_print() {
@@ -922,8 +952,7 @@ mod test_transaction_table {
         let handle = th
             .spawn(move || {
                 for i in 0..100 {
-                    let trade =
-                        Trade::new(i, OrderSide::Buy, 0.0, 10.0, false, "abc1".to_string());
+                    let trade = Trade::new(i, OrderSide::Buy, 0.0, 10.0, false, "abc1".to_string());
                     println!("<{:?}", trade);
                     let _ = tx.send(trade);
                 }
@@ -941,7 +970,7 @@ mod test_transaction_table {
     fn test_send_channel_02() {
         let (tx, rx): (Sender<Trade>, Receiver<Trade>) = mpsc::channel();
 
-        let handle = thread::spawn(move || {
+        let _handle = thread::spawn(move || {
             for recv_rec in rx {
                 println!(">{:?}", recv_rec);
             }
@@ -985,14 +1014,12 @@ mod test_transaction_table {
         println!("{:?}", df);
     }
 
-
     #[test]
     fn test_update_cache() {
         init_log();
         let db_name = db_full_path("FTX", "BTC-PERP");
         let mut db = TradeTable::open(db_name.to_str().unwrap()).unwrap();
 
-        db.update_cache_df(NOW()-DAYS(1), NOW());
+        db.update_cache_df(NOW() - DAYS(1), NOW());
     }
-
 }

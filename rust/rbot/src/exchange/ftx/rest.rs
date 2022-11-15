@@ -1,6 +1,5 @@
 use crate::common::order::{Trade, TimeChunk};
 use crate::common::time::{time_string, to_seconds, MicroSec, DAYS, HHMM, NOW, MICRO_SECOND};
-use crate::db::sqlite::TradeTable;
 use log;
 use std::thread::sleep;
 use std::time::Duration;
@@ -8,7 +7,6 @@ use crate::exchange::ftx::message::FtxTradeMessage;
 
 const FTX_REST_ENDPOINT: &str = "https://ftx.com/api";
 
-const BTCMARKET: &str = "BTC-PERP";
 
 // TODO: RESTAPIのエラー処理（取引所エラー）対応。
 
@@ -115,10 +113,10 @@ where
 pub fn download_trade_callback_ndays<F>(
     market_name: &str,
     ndays: i32,
-    mut f: F) where F: FnMut(Vec<Trade>),
+    f: F) where F: FnMut(Vec<Trade>),
 {
     let start_time = NOW() - DAYS(ndays as i64) - HHMM(0, 10);
-    let mut end_time = NOW() + HHMM(0, 5); // 5分後を指定し最新を取得。
+    let end_time = NOW() + HHMM(0, 5); // 5分後を指定し最新を取得。
     
     log::debug!("download_trade_ndays {} / {} -> {}", ndays, time_string(start_time), time_string(end_time));
 
@@ -156,7 +154,7 @@ F: FnMut(Vec<Trade>),
             time_string(end_time),
             end_time
         );
-        let mut trades = download_trade(market_name, start_time, end_time);
+        let trades = download_trade(market_name, start_time, end_time);
         let trade_len = trades.len();
         end_time = trades[trade_len - 1].time;
 
@@ -173,31 +171,6 @@ F: FnMut(Vec<Trade>),
 
         sleep(Duration::from_millis(1));
     }
-}
-
-
-fn check_skip_time(mut trades: &Vec<Trade>) {
-    /*
-    let mut last_time: MicroSec = 0;
-    let mut last_id: String = "".to_string();
-
-    for t in trades {
-        if last_time != 0 {
-            if 5 * MICRO_SECOND < t.time - last_time ||
-                t.time - last_time < - 5 * MICRO_SECOND
-            {
-                log::debug!("SKIP {} / {:?}", t.time-last_time, t);
-            }
-        }
-
-        if last_id == t.id {
-            log::debug!("SKIP {:?}", t);
-        }
-
-        last_time = t.time;
-        last_id = t.id.clone();
-    }
-    */
 }
 
 
@@ -227,8 +200,6 @@ pub fn download_trade(
                 Ok(mut message) => {
                     let mut trades = message.get_trades();
                     trades.sort_by(|a, b| b.time.cmp(&a.time));
-                    
-                    check_skip_time(&trades);
 
                     trades    // Ok!!
                 },
@@ -254,23 +225,16 @@ pub fn download_trade(
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod test_ftx_client {
+    const BTCMARKET: &str = "BTC-PERP";
+
     use super::*;
     use std::fs::File;
     use std::io::{BufWriter, Write};
-    use std::sync::mpsc;
-    use std::sync::mpsc::{Receiver, Sender};
-    use std::thread;
-    //use std::io::Cursor;
     use crate::common::init_log;
-    //use crate::common::order::OrderSide;
     use crate::common::time::{DAYS, NOW};
-    //use crate::exchange::ftx::message::FtxTradeMessage;
     use crate::db::sqlite::TradeTable;
     use crate::fs::db_full_path;
     use crate::time_string;
-
-
-
 
     #[test]
     pub fn test_download_trade_callback() {
@@ -278,9 +242,8 @@ mod test_ftx_client {
         let to_time = NOW() + HHMM(0, 5);
         let from_time = to_time - HHMM(10, 0);
 
-        let trade = download_trade_callback (BTCMARKET, from_time, to_time, |trade| {
+        download_trade_callback (BTCMARKET, from_time, to_time, |trade| {
             log::debug!("{:?} -> {:?}", trade[trade.len()-1].time, trade[0].time);
-            check_skip_time(&trade);
         });
     }
 
@@ -295,11 +258,11 @@ mod test_ftx_client {
             |trade| {
                 for t in trade {
                     // println!("{}", t.to_csv())
-                    writer.write_all(t.to_csv().as_bytes());
+                    let _ = writer.write_all(t.to_csv().as_bytes());
                 }
             });
         
-            writer.flush();
+            let _= writer.flush();
     }
 
 

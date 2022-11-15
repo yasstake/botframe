@@ -1,32 +1,22 @@
 mod message;
 mod rest;
 
-use std::f64::consts::E;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
-use pyo3::exceptions::PySystemError;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::*;
 use rusqlite::Statement;
 
 use crate::common::order::Trade;
-use crate::common::time::{MicroSec, time_string};
+use crate::common::time::MicroSec;
 use crate::common::time::DAYS;
 use crate::common::time::NOW;
 use crate::common::time::SEC;
 
 use self::rest::{download_trade_callback_ndays, download_trade_chunks_callback};
-use crate::db::df;
-use crate::db::df::TradeBuffer;
 use crate::db::sqlite::TradeTable;
 use crate::fs::db_full_path;
-
-use crate::db::df::KEY;
-use polars::prelude::DataFrame;
-use polars::prelude::Float64Type;
 
 use numpy::IntoPyArray;
 use numpy::PyArray2;
@@ -111,7 +101,7 @@ impl FtxMarket {
                         }
                     }
                 }
-                Err(e) => {
+                Err(_e) => {
                     break;
                 }
             }
@@ -194,8 +184,6 @@ impl FtxMarket {
 #[cfg(test)]
 mod test_exchange_ftx {
     use crate::common::init_log;
-    use crate::common::time::DAYS;
-    use crate::db::df::ohlcv_df;
 
     use super::*;
     #[test]

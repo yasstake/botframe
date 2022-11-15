@@ -1,6 +1,3 @@
-use std::error::Error;
-
-use crate::common::order;
 use crate::common::order::LogBuffer;
 // use crate::common::order::MarketType;
 use crate::common::order::Order;
@@ -10,23 +7,17 @@ use crate::common::order::OrderStatus;
 
 use crate::common::order::Trade;
 use crate::common::order::log_order_result;
-use crate::exchange::ftx::DbForeach;
-use crate::exchange::ftx::FtxMarket;
+use crate::common::time::MicroSec;
 use crate::sim::market::OrderQueue;
 
 // use crate::sim::market::Position;
-use crate::common::time::MicroSec;
 use crate::sim::market::Positions;
 
-use crate::db::sqlite::TradeTable;
-use numpy::PyArray2;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::pyclass;
 use pyo3::prelude::pymethods;
-use pyo3::prelude::Py;
-use rusqlite::params;
 
-use crate::{MICRO_SECOND, SEC};
+use crate::SEC;
 use pyo3::*;
 
 
@@ -53,20 +44,25 @@ use pyo3::*;
 ///     オーダーIDをつくり、返却
 ///
 
+
 #[pyclass(name = "_DummySession")]
 #[derive(Clone, Debug)]
 pub struct DummySession {
     _order_index: i64,
     #[pyo3(get)]
-    pub sell_board_edge_price: f64, // best ask price　買う時の価格
-    #[pyo3(get)]
     pub current_timestamp: i64,
     #[pyo3(get)]
-    pub buy_board_edge_price: f64, // best bit price 　売る時の価格
+    pub sell_board_edge_price: f64, // best ask price　買う時の価格
     #[pyo3(get)]
+    pub buy_board_edge_price: f64, // best bit price 　売る時の価格
+    #[pyo3(get)]    
     pub exchange_name: String,
     #[pyo3(get)]
     pub market_name: String,
+    #[pyo3(get)]
+    pub server_delay: MicroSec,
+    #[pyo3(get)]    
+    pub maker_fee: f64,
     pub long_orders: OrderQueue,
     pub short_orders: OrderQueue,
     pub positions: Positions,
@@ -80,15 +76,17 @@ impl DummySession {
     pub fn new(exchange_name: &str, market_name: &str) -> Self {
         return DummySession {
             _order_index: 0,
+            current_timestamp: 0,            
             sell_board_edge_price: 0.0,
             buy_board_edge_price: 0.0,
-            current_timestamp: 0,
+            exchange_name: exchange_name.to_string().to_ascii_uppercase(),
+            market_name: market_name.to_string().to_ascii_uppercase(),
+            server_delay: 100_000,      // 0.1 sec
+            maker_fee:  0.01 * 0.01,     // 0.01%
             long_orders: OrderQueue::new(true),
             short_orders: OrderQueue::new(false),
             positions: Positions::new(),
             wallet_balance: 0.0,
-            exchange_name: exchange_name.to_string().to_ascii_uppercase(),
-            market_name: market_name.to_string().to_ascii_uppercase(),
         };
     }
 
@@ -110,53 +108,53 @@ impl DummySession {
 
     /// 未約定でキューに入っているlong orderのサイズ（合計）
     #[getter]
-    fn get_long_order_size(&self) -> f64 {
+    pub fn get_long_order_size(&self) -> f64 {
         return self.long_orders.get_size();
     }
 
     ///　未約定のlong order一覧
     #[getter]
-    fn get_long_orders(&self) -> Vec<Order> {
+    pub fn get_long_orders(&self) -> Vec<Order> {
         return self.long_orders.get_q();
     }
 
     /// 未約定でキューに入っているshort orderのサイズ（合計）
     #[getter]
-    fn get_short_order_size(&self) -> f64 {
+    pub fn get_short_order_size(&self) -> f64 {
         return self.short_orders.get_size();
     }
 
     ///　未約定のshort order一覧
     #[getter]
-    fn get_short_orders(&self) -> Vec<Order> {
+    pub fn get_short_orders(&self) -> Vec<Order> {
         return self.short_orders.get_q();
     }
 
     /// longポジションのサイズ（合計）
     #[getter]
-    fn get_long_position_size(&self) -> f64 {
+    pub fn get_long_position_size(&self) -> f64 {
         return self.positions.get_long_position_size();
     }
 
     #[getter]
-    fn get_long_position_price(&self) -> f64{
+    pub fn get_long_position_price(&self) -> f64{
         return self.positions.get_long_position_price();
     }
 
     /// shortポジションのサイズ（合計）
     #[getter]
-    fn get_short_position_size(&self) -> f64 {
+    pub fn get_short_position_size(&self) -> f64 {
         return self.positions.get_short_position_size();
     }
 
     #[getter]
-    fn get_short_position_price(&self) -> f64 {
+    pub fn get_short_position_price(&self) -> f64 {
         return self.positions.get_short_position_price();
     }
 
     /// オーダー作りオーダーリストへ追加する。
     /// 最初にオーダー可能かどうか確認する（余力の有無）
-    fn make_order(
+    pub fn make_order(
         &mut self,
         side: &str,
         price: f64,
@@ -173,7 +171,6 @@ impl DummySession {
             }
         }
     }
-
 }
 
 
@@ -274,10 +271,10 @@ impl DummySession {
     ) -> Result<OrderResult, OrderStatus> {
         return match trade.order_side {
             OrderSide::Buy => {
-                self.short_orders.consume(trade)
+                self.short_orders.consume(trade, self.server_delay)
             }
             OrderSide::Sell => {
-                self.long_orders.consume(trade)
+                self.long_orders.consume(trade, self.server_delay)
             }
             _ => {Err(OrderStatus::Error)}
         }
@@ -285,7 +282,7 @@ impl DummySession {
 
     fn update_position(
         &mut self,
-        mut tick_result: &mut LogBuffer,
+        tick_result: &mut LogBuffer,
         order_result: &mut OrderResult,
     ) -> Result<(), OrderStatus> {
         //ポジションに追加しする。
@@ -337,13 +334,20 @@ impl DummySession {
     fn log_order_result(&mut self, tick_log: &mut LogBuffer, mut order_result: OrderResult) {
         order_result.update_time = self.current_timestamp;
 
-        // self.calc_profit(&mut order_result);
-
-        //        let tick_result = order_result.clone();
-        //        self.order_history.push(order_result);
+        self.calc_profit(&mut order_result);
         log_order_result(tick_log, order_result);
     }
 
+
+    fn calc_profit(&self, order: &mut OrderResult) {
+        if order.status == OrderStatus::OpenPosition {
+            order.fee = order.open_foreign_size * self.maker_fee;
+        }
+        else if order.status == OrderStatus::ClosePosition {
+            order.fee = order.close_foreign_size * self.maker_fee;
+        }
+        order.total_profit = order.profit - order.fee;
+    }
 
 
     /* TODO: マージンの計算とFundingRate計算はあとまわし */
@@ -409,6 +413,14 @@ impl DummySession {
 
         let timestamp = self.current_timestamp;
 
+        if size == 0.0 {
+            return Err("Order size cannot be 0".to_string());
+        }
+
+        if price == 0.0 {
+            return Err("Order price cannot be 0".to_string());
+        }
+
         let order_id = self.generate_id();
         let order = Order::new(
             timestamp,
@@ -442,6 +454,16 @@ impl DummySession {
             }
         }
     }
+
+    pub fn is_init(&mut self) -> bool {
+        if self.buy_board_edge_price == 0.0 {
+            return false;
+        }
+        else if self.sell_board_edge_price == 0.0 {
+            return false;
+        }
+        return true;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -473,7 +495,7 @@ fn generate_trades_vec1(start_time: i64) -> Vec<Trade> {
 #[cfg(test)]
 mod test_session {
     use crate::common::order::make_logbuffer;
-    use crate::common::order::print_order_results;    
+    use crate::common::order::print_order_results;
 
     use super::*;
     #[test]
@@ -564,12 +586,12 @@ fn test_100_orders_open_small_order() {
         session.process_trade(&t, &mut result_log);
     }
 
-    let _r = session._make_order(OrderSide::Buy, 50.0, 0.1, 10, "".to_string());
+    let _r = session._make_order(OrderSide::Buy, 50.0, 0.1, 100, "".to_string());
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
     }
-    let _r = session._make_order(OrderSide::Sell, 60.0, 0.1, 10, "".to_string());
+    let _r = session._make_order(OrderSide::Sell, 60.0, 0.1, 100, "".to_string());
     for t in generate_trades_vec1(100) {
         session.process_trade(&t, &mut result_log);
     }
@@ -724,9 +746,6 @@ fn test_100_orders_open_small_close_big_position() {
 
     #[test]
     fn test_exec_event_execute_order() {
-        let mut tick_result: Vec<OrderResult> = vec![];
-
-        let db = TradeTable::open("BTC-PERP").unwrap();
         let mut session = DummySession::new("FTX", "BTC-PERP");
         assert_eq!(session.current_timestamp, 0); // 最初は０
 

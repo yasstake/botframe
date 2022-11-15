@@ -13,7 +13,8 @@ from rbot import NOW
 from rbot import DAYS
 from rbot import OrderSide
 
-rbot.init_log()
+#rbot.init_log()
+rbot.init_debug_log()
 
 class Agent(BaseAgent):   
     def clock_interval(self):

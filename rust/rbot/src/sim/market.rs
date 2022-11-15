@@ -131,10 +131,13 @@ impl OrderQueue {
             if self.q[i].valid_until < current_time {
                 let order = self.q.remove(i);
 
+                if order.price == 0.0 {
+                    println!("Div 0 in expire / order={:?}", order);                    
+                    log::debug!("Div 0 in expire / order={:?}", order);
+                }
+
                 let close_order =
                     OrderResult::from_order(current_time, &order, OrderStatus::ExpireOrder);
-
-                // println!("Order expire {:?}", close_order);
 
                 return Ok(close_order);
             }
@@ -150,13 +153,14 @@ impl OrderQueue {
     /// 超巨大オーダがきた場合でも複数約定はさせず、次回に回す。
     pub fn consume(
         &mut self,
-        trade: &Trade
+        trade: &Trade,
+        server_delay: MicroSec
     ) -> Result<OrderResult, OrderStatus> {
         if self.has_q() == false {
             return Err(OrderStatus::NoAction);
         }
 
-        if self.execute_remain_size(trade) {
+        if self.execute_remain_size(trade, server_delay) {
             return self.pop_closed_order(trade.time);
         }
 
@@ -166,7 +170,7 @@ impl OrderQueue {
     /// キューの中に処理できるオーダーがあれば、size_remainをへらしていく。
     /// size_remainが０になったらオーダ完了の印。
     /// 実際の取り出しは pop_close_orderで実施する。
-    fn execute_remain_size(&mut self, trade: &Trade) -> bool {
+    fn execute_remain_size(&mut self, trade: &Trade, server_delay: MicroSec) -> bool {
         if self.has_q() == false {
             return false;
         }
@@ -177,9 +181,12 @@ impl OrderQueue {
 
         // 順番に価格条件をみたしたものから約定したこととし、remain_sizeをへらしていく。
         for i in 0..l {
+            if trade.time + server_delay <= self.q[i].create_time {
+                continue;
+            }
+
             if ((self.buy_queue == true) && (trade.price  < self.q[i].price))          // Buy Case
-                || ((self.buy_queue == false) && (self.q[i].price < trade.price))
-            // Sell case
+                || ((self.buy_queue == false) && (self.q[i].price < trade.price))      // Sell case
             {
                 if self.q[i].remain_size <= size_remain {
                     complete_order = true;
@@ -209,10 +216,32 @@ impl OrderQueue {
             if self.q[i].remain_size <= 0.0 {
                 let order = &self.q.remove(i);
 
-                let mut close_order =
+                if order.size == 0.0 {
+                    log::error!("{} / Div 0 order size", order.create_time);
+                }
+
+                let close_order =
                     OrderResult::from_order(current_time, &order, OrderStatus::OrderComplete);
 
                 return Ok(close_order);
+            }
+        }
+
+        return Err(OrderStatus::NoAction);
+    }
+
+    /// ID で指定されたオーダをキャンセルする。
+    fn cancel_order(&mut self, current_time: MicroSec, order_id: String) -> Result<OrderResult, OrderStatus> {
+        let l = self.q.len();
+
+        for i in 0..l {
+            if self.q[i].order_id == order_id {
+                let order = &self.q.remove(i);
+
+                let cancel_order =
+                    OrderResult::from_order(current_time, &order, OrderStatus::Cancel);
+
+                return Ok(cancel_order);
             }
         }
 
@@ -244,19 +273,22 @@ impl Position {
         if self.home_size == 0.0 {
             // 最初のポジションだった場合
             self.price = order.order_price;
-            self.home_size = order.home_size;
+            self.home_size = order.order_home_size;
         } else {
             // 追加ポジションだった場合。既存ポジション＋新規ポジションの平均を計算する。
-            let new_size = self.home_size + order.home_size;
+            let new_size = self.home_size + order.order_home_size;
 
+            // TODO: 計算方法シンプルに変更する（できるはず）
             // ポジションの平均価格の計算（加重平均）
             // 価格　＝　（単価old＊数量old) + (新規new*数量new) / 　(新規合計数量）
-            self.price = (self.price * self.home_size + order.order_price * order.home_size) / new_size;
+            self.price = (self.price * self.home_size + order.order_price * order.order_home_size) / new_size;
             self.home_size = new_size;
         }
 
         order.status = OrderStatus::OpenPosition;
         order.open_price = order.order_price;
+        order.open_home_size = order.order_home_size;
+        order.open_foreign_size = order.order_foreign_size;
 
         return Ok(());
     }
@@ -270,29 +302,36 @@ impl Position {
             // ポジションがない場合なにもしない。
             self.price = 0.0; // （誤差蓄積解消のためポジション０のときはリセット）
             return Err(OrderStatus::NoAction);
-        } else if self.home_size < order.home_size {
+        } else if self.home_size < order.order_home_size {
             // ポジション以上にクローズしようとした場合なにもしない（別途、クローズとオープンに分割して処理する）
             return Err(OrderStatus::OverPosition);
         }
         // オーダの全部クローズ（ポジションは残る）
         order.status = OrderStatus::ClosePosition;
 
-        order.open_price = self.price;
+        // order.open_price = self.price;
         order.close_price = order.order_price;
+        order.close_home_size = order.order_home_size;
+        order.close_foreign_size = order.order_foreign_size;
 
         match order.order_side {
             OrderSide::Buy => {
-                order.profit = (order.open_price - order.close_price)/order.open_price * order.foreign_size;
+                // order.profit = (order.open_price - order.close_price)/order.open_price * order.order_foreign_size;
+                               // ex) Sell Price  80              Buy Price 100  = -20
+                order.profit = order.open_foreign_size - order.close_foreign_size;                
+
             }
             OrderSide::Sell => {
-                order.profit = (order.close_price - order.open_price)/order.open_price * order.foreign_size;
+                // order.profit = (order.close_price - order.open_price)/order.open_price * order.order_foreign_size;
+                                // ex) Sell Price 100            Buy Price 80 =  20
+                order.profit = order.close_foreign_size - order.open_foreign_size;
             }
             OrderSide::Unknown => {
                 log::error!("Unknown side");
             }
         }
         // ポジションの整理
-        self.home_size -= order.home_size;
+        self.home_size -= order.order_home_size;
 
         if self.home_size == 0.0 {
             self.price = 0.0;
@@ -446,24 +485,6 @@ impl Positions {
 ///
 
 #[cfg(test)]
-fn test_build_closed_order(order_type: OrderSide, price: f64, size: f64) -> OrderResult {
-    let sell_order01 = Order::new(
-        1,
-        "neworder".to_string(),
-        order_type,
-        true,
-        100,
-        price,
-        size,
-        "".to_string(),
-    );
-
-    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::ClosePosition);
-
-    return sell_close01;
-}
-
-#[cfg(test)]
 fn test_build_orders() -> Vec<OrderResult> {
     let sell_order01 = Order::new(
         1,
@@ -537,8 +558,8 @@ mod test_order_positon {
 
         // ポジションを作る。
         assert_eq!(orders[1].order_price, 200.0);
-        assert_eq!(orders[1].home_size, 200.0);
-        assert_eq!(orders[1].foreign_size, 1.0);
+        assert_eq!(orders[1].order_home_size, 200.0);
+        assert_eq!(orders[1].order_foreign_size, 1.0);
         let _r = position.open_position(&mut orders[1]); // price 200.0, size 200.0
         println!("{:?}  {:?}", position, _r);
         assert_eq!(position.price, 200.0);
@@ -563,7 +584,7 @@ mod test_order_positon {
         let _r = position.open_position(&mut orders[5]); // price 50.0, size 100.0
         println!("{:?} {:?}", position, orders[5]);
         assert_eq!(orders[5].order_price, 50.0);
-        assert_eq!(orders[5].home_size, 100.0);
+        assert_eq!(orders[5].order_home_size, 100.0);
         assert_eq!(
             position.price,
             ((200.0 * 800.0) + (50.0 * 100.0)) / (800.0 + 100.0)
@@ -579,14 +600,17 @@ mod test_order_positon {
         assert_eq!(position.price, last_price); // 単価は同じ
         assert_eq!(orders[6].open_price, last_price);
         assert_eq!(orders[6].close_price, 50.0);
+
+
+        // 収益の計算はforeinサイズの差で求められる。
         assert_eq!(
             orders[6].profit,
-            (last_price - 50.0) * (orders[6].foreign_size)
+            (last_price - 50.0)/last_price * (orders[6].order_foreign_size)
         );
 
         //ポジションクローズのテスト（大きいオーダーのクローズではエラーがかえってくる）
         println!("-- CLOSE BIG ---");
-        orders[0].home_size = 10000.0;
+        orders[0].order_home_size = 10000.0;
         println!("{:?} {:?}", position, orders[0]);
         let r = position.close_position(&mut orders[0]);
 
@@ -718,16 +742,16 @@ mod closed_order_test {
         );
 
         let mut close_order = OrderResult::from_order(100, &order, OrderStatus::OrderComplete);
-        assert_eq!(close_order.home_size, 101.0);
-        assert_eq!(close_order.foreign_size, 101.0 / 100.1);
+        assert_eq!(close_order.order_home_size, 101.0);
+        assert_eq!(close_order.order_foreign_size, 101.0 / 100.1);
 
         let result = &close_order.split_child(50.0).unwrap();
-        assert_eq!(close_order.home_size, 50.0);
-        assert_eq!(result.home_size, 51.0);
+        assert_eq!(close_order.order_home_size, 50.0);
+        assert_eq!(result.order_home_size, 51.0);
 
         assert_eq!(
             101.0 / 100.1,
-            result.foreign_size + close_order.foreign_size
+            result.order_foreign_size + close_order.order_foreign_size
         );
     }
 }
@@ -817,9 +841,10 @@ mod test_orders {
 
         assert_eq!(orders.q[0].remain_size, 50.0);
         assert_eq!(orders.q[1].remain_size, 200.0);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 200.0, size:125.0, liquid: false, id: "".to_string() }), false);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 199.0, size:125.0, liquid: false, id: "".to_string() }), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        // TODO server delay test
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 200.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 199.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
 
         println!("--after--");
         println!("{:?}", orders.q[0]);
@@ -846,8 +871,8 @@ mod test_orders {
         assert_eq!(orders.q[0].remain_size, 100.0);
         assert_eq!(orders.q[1].remain_size, 50.0);
         // TODO: Upadte size
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
 
         // まだ約定していない。
         match orders.pop_closed_order(1000) {
@@ -860,7 +885,7 @@ mod test_orders {
             }
         }
 
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }), true);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }, 0), true);
         println!("--after--");
         assert_eq!(orders.q[0].remain_size, 0.0);
         assert_eq!(orders.q[1].remain_size, 25.0);
@@ -888,7 +913,7 @@ mod test_orders {
         }
 
         // ログをおくったら約定する。
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }), true);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }, 0), true);
         match orders.pop_closed_order(1001) {
             Ok(order) => {
                 assert_eq!(order.order_id, "low price but later");

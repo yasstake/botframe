@@ -3,11 +3,10 @@ use rusqlite::params;
 
 use crate::{
     common::{
-        order::{OrderResult, OrderSide, Trade, make_logbuffer, log_order_result, OrderStatus},
-        time::{MicroSec, CEIL, SEC},
+        order::{log_order_result, make_logbuffer, OrderResult, OrderSide, OrderStatus, Trade},
+        time::{MicroSec, CEIL},
     },
     db::open_db,
-    exchange::ftx::FtxMarket,
     sim::session::DummySession,
 };
 
@@ -72,27 +71,30 @@ impl BackTester {
             let mut s = Py::new(py, session).unwrap();
             let mut last_clock: i64 = 0;
 
+            // TODO: change hardcording its time.
+            let mut skip_tick = 100;
+
             for trade in iter {
                 match trade {
                     Ok(t) => {
-                        if self.agent_on_clock {
-                            let current_clock = CEIL(t.time, clock_interval);
-                            if current_clock != last_clock {
-                                s = self.clock(s, agent, current_clock);
-                                last_clock = current_clock;
+                        if skip_tick == 0 {
+                            if self.agent_on_clock {
+                                let current_clock = CEIL(t.time, clock_interval);
+                                if current_clock != last_clock {
+                                    s = self.clock(s, agent, current_clock);
+                                    last_clock = current_clock;
+                                }
                             }
+                        }
+                        else {
+                            skip_tick -= 1;                            
                         }
 
                         session = s.extract::<DummySession>(py).unwrap();
 
-                        //let results = session.main_exec_event(t.time, t.order_side, t.price, t.size);
-
                         let mut tick_result: Vec<OrderResult> = vec![];
 
-                        session.process_trade(
-                            &t,
-                            &mut tick_result,
-                        );
+                        session.process_trade(&t, &mut tick_result);
                         s = Py::new(py, session).unwrap();
                         s = self.tick(s, agent, &t);
 
@@ -136,7 +138,7 @@ impl BackTester {
                 ),
             );
             match result {
-                Ok(_oK) => {
+                Ok(_ok) => {
                     //
                 }
                 Err(e) => {
@@ -150,7 +152,7 @@ impl BackTester {
     fn clock(&mut self, session: Py<DummySession>, agent: &PyAny, clock: i64) -> Py<DummySession> {
         let result = agent.call_method1("_on_clock", (clock, &session));
         match result {
-            Ok(_oK) => {
+            Ok(_ok) => {
                 //
             }
             Err(e) => {
@@ -171,7 +173,7 @@ impl BackTester {
         let result = agent.call_method1("_on_update", (time, &session, r));
 
         match result {
-            Ok(_oK) => {
+            Ok(_ok) => {
                 //
             }
             Err(e) => {
@@ -200,26 +202,26 @@ impl BackTester {
     // トータルだけ損益を計算する。
     // TODO: MakerとTakerでも両率を変更する。
     fn calc_profit(&self, mut order_result: OrderResult) -> OrderResult {
-        if order_result.status == OrderStatus::OpenPosition || order_result.status == OrderStatus::ClosePosition {
+        if order_result.status == OrderStatus::OpenPosition
+            || order_result.status == OrderStatus::ClosePosition
+        {
             let fee_rate = 0.0001;
-            order_result.fee = order_result.home_size * fee_rate;
+            order_result.fee = order_result.order_foreign_size * fee_rate;
             order_result.total_profit = order_result.profit - order_result.fee;
         }
 
         order_result
     }
-
 }
 
 #[cfg(test)]
 mod back_testr_test {
     use super::*;
     use pyo3::prelude::PyModule;
-    use pyo3::*;
 
     #[test]
     fn test_create() {
-        let b = BackTester::new("FTX", "BTC-PERP");
+        let _b = BackTester::new("FTX", "BTC-PERP");
     }
 
     #[test]

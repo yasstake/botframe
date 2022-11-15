@@ -74,7 +74,6 @@ impl FtxTrade {
 
 #[cfg(test)]
 mod test_ftx_message {
-    use simple_logger::SimpleLogger;
     use crate::common::time::parse_time;
     use crate::exchange::ftx::message::FtxTradeMessage;
 
