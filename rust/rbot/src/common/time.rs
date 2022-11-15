@@ -137,7 +137,7 @@ mod time_test {
     }
 
     #[test]
-    fn test_floor() {
+    fn test_floor2() {
         assert_eq!(        0, FLOOR(  999_999, 1));                
         assert_eq!(1_000_000, FLOOR(1_000_000, 1));        
         assert_eq!(1_000_000, FLOOR(1_000_111, 1));

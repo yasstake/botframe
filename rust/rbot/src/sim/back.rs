@@ -3,7 +3,7 @@ use rusqlite::params;
 
 use crate::{
     common::{
-        order::{OrderResult, OrderSide, Trade},
+        order::{OrderResult, OrderSide, Trade, make_logbuffer, log_order_result, OrderStatus},
         time::{MicroSec, CEIL, SEC},
     },
     db::open_db,
@@ -48,7 +48,7 @@ impl BackTester {
         let db = open_db(self.exchange_name.as_str(), self.market_name.as_str());
         let mut statement = db.select_all_statement();
 
-        let mut order_history: Vec<OrderResult> = vec![];
+        let mut order_history: Vec<OrderResult> = make_logbuffer();
 
         Python::with_gil(|py| {
             let iter = statement
@@ -96,11 +96,14 @@ impl BackTester {
                         s = Py::new(py, session).unwrap();
                         s = self.tick(s, agent, &t);
 
-                        for r in tick_result {
+                        for mut r in tick_result {
+                            // TODO calc fee and profit
+                            r = self.calc_profit(r);
+
                             if self.agent_on_update {
                                 s = self.update(s, agent, r.update_time, r.clone());
                             }
-                            order_history.push(r);
+                            log_order_result(&mut order_history, r);
                         }
                     }
                     Err(e) => {
@@ -193,6 +196,19 @@ impl BackTester {
 
         return interval_sec;
     }
+
+    // トータルだけ損益を計算する。
+    // TODO: MakerとTakerでも両率を変更する。
+    fn calc_profit(&self, mut order_result: OrderResult) -> OrderResult {
+        if order_result.status == OrderStatus::OpenPosition || order_result.status == OrderStatus::ClosePosition {
+            let fee_rate = 0.0001;
+            order_result.fee = order_result.home_size * fee_rate;
+            order_result.total_profit = order_result.profit - order_result.fee;
+        }
+
+        order_result
+    }
+
 }
 
 #[cfg(test)]

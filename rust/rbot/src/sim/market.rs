@@ -209,7 +209,7 @@ impl OrderQueue {
             if self.q[i].remain_size <= 0.0 {
                 let order = &self.q.remove(i);
 
-                let close_order =
+                let mut close_order =
                     OrderResult::from_order(current_time, &order, OrderStatus::OrderComplete);
 
                 return Ok(close_order);
@@ -240,11 +240,10 @@ impl Position {
     /// すでに約定は済んでいるはずなので、エラーは出ない。
     /// 新規にポジションの平均取得単価を計算する。
     pub fn open_position(&mut self, order: &mut OrderResult) -> Result<(), OrderStatus> {
-        order.status = OrderStatus::OpenPosition;
 
         if self.home_size == 0.0 {
             // 最初のポジションだった場合
-            self.price = order.open_price;
+            self.price = order.order_price;
             self.home_size = order.home_size;
         } else {
             // 追加ポジションだった場合。既存ポジション＋新規ポジションの平均を計算する。
@@ -252,9 +251,13 @@ impl Position {
 
             // ポジションの平均価格の計算（加重平均）
             // 価格　＝　（単価old＊数量old) + (新規new*数量new) / 　(新規合計数量）
-            self.price = (self.price * self.home_size + order.price * order.home_size) / new_size;
+            self.price = (self.price * self.home_size + order.order_price * order.home_size) / new_size;
             self.home_size = new_size;
         }
+
+        order.status = OrderStatus::OpenPosition;
+        order.open_price = order.order_price;
+
         return Ok(());
     }
 
@@ -274,18 +277,18 @@ impl Position {
         // オーダの全部クローズ（ポジションは残る）
         order.status = OrderStatus::ClosePosition;
 
-        order.close_price = order.open_price;
         order.open_price = self.price;
+        order.close_price = order.order_price;
 
         match order.order_side {
             OrderSide::Buy => {
-                order.profit = (order.open_price - order.close_price) * order.foreign_size;
+                order.profit = (order.open_price - order.close_price)/order.open_price * order.foreign_size;
             }
             OrderSide::Sell => {
-                order.profit = (order.close_price - order.open_price) * order.foreign_size;
+                order.profit = (order.close_price - order.open_price)/order.open_price * order.foreign_size;
             }
             OrderSide::Unknown => {
-                println!("Unknown side");
+                log::error!("Unknown side");
             }
         }
         // ポジションの整理
@@ -441,82 +444,85 @@ impl Positions {
 /// TEST SECTION
 /// ------------------------------------------------------------------------------------
 ///
+
+#[cfg(test)]
+fn test_build_closed_order(order_type: OrderSide, price: f64, size: f64) -> OrderResult {
+    let sell_order01 = Order::new(
+        1,
+        "neworder".to_string(),
+        order_type,
+        true,
+        100,
+        price,
+        size,
+        "".to_string(),
+    );
+
+    let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::ClosePosition);
+
+    return sell_close01;
+}
+
+#[cfg(test)]
+fn test_build_orders() -> Vec<OrderResult> {
+    let sell_order01 = Order::new(
+        1,
+        "neworder".to_string(),
+        OrderSide::Sell,
+        true,
+        100,
+        200.0,
+        200.0,
+        "".to_string(),
+    );
+
+    let sell_open00 = OrderResult::from_order(2, &sell_order01, OrderStatus::InOrder);
+
+    let mut sell_open01 = sell_open00.clone();
+    sell_open01.order_id = "aa".to_string();
+    let sell_open02 = sell_open00.clone();
+    let sell_open03 = sell_open00.clone();
+    let sell_open04 = sell_open00.clone();
+
+    let buy_order = Order::new(
+        1,
+        "buyorder".to_string(),
+        OrderSide::Buy,
+        true,
+        100,
+        50.0,
+        100.0,
+        "".to_string(),
+    );
+    let buy_close00 = OrderResult::from_order(2, &buy_order, OrderStatus::InOrder);
+    let buy_close01 = buy_close00.clone();
+    let buy_close02 = buy_close00.clone();
+    let buy_close03 = buy_close00.clone();
+    let buy_close04 = buy_close00.clone();
+
+    return vec![
+        sell_open00,
+        sell_open01,
+        sell_open02,
+        sell_open03,
+        sell_open04,
+        buy_close00,
+        buy_close01,
+        buy_close02,
+        buy_close03,
+        buy_close04,
+    ];
+}
+
+
+
+
+
+
 #[cfg(test)]
 mod test_order_positon {
     use super::*;
     #[cfg(test)]
-    fn test_build_closed_order(order_type: OrderSide, price: f64, size: f64) -> OrderResult {
-        let sell_order01 = Order::new(
-            1,
-            "neworder".to_string(),
-            order_type,
-            true,
-            100,
-            price,
-            size,
-            "".to_string(),
-        );
-
-        let sell_close01 = OrderResult::from_order(2, &sell_order01, OrderStatus::ClosePosition);
-
-        return sell_close01;
-    }
-
-    #[cfg(test)]
-    fn test_build_orders() -> Vec<OrderResult> {
-        let sell_order01 = Order::new(
-            1,
-            "neworder".to_string(),
-            OrderSide::Sell,
-            true,
-            100,
-            200.0,
-            200.0,
-            "".to_string(),
-        );
-
-        let sell_open00 = OrderResult::from_order(2, &sell_order01, OrderStatus::InOrder);
-
-        let mut sell_open01 = sell_open00.clone();
-        sell_open01.order_id = "aa".to_string();
-        let sell_open02 = sell_open00.clone();
-        let sell_open03 = sell_open00.clone();
-        let sell_open04 = sell_open00.clone();
-
-        let buy_order = Order::new(
-            1,
-            "buyorder".to_string(),
-            OrderSide::Buy,
-            true,
-            100,
-            50.0,
-            100.0,
-            "".to_string(),
-        );
-        let buy_close00 = OrderResult::from_order(2, &buy_order, OrderStatus::InOrder);
-        let buy_close01 = buy_close00.clone();
-        let buy_close02 = buy_close00.clone();
-        let buy_close03 = buy_close00.clone();
-        let buy_close04 = buy_close00.clone();
-
-        return vec![
-            sell_open00,
-            sell_open01,
-            sell_open02,
-            sell_open03,
-            sell_open04,
-            buy_close00,
-            buy_close01,
-            buy_close02,
-            buy_close03,
-            buy_close04,
-        ];
-    }
-}
-
-#[cfg(test)]
-mod test_position {
-    use super::*;
 
     #[test]
     pub fn test_update_position() {
@@ -530,7 +536,7 @@ mod test_position {
         assert_eq!(position.price, 0.0);
 
         // ポジションを作る。
-        assert_eq!(orders[1].price, 200.0);
+        assert_eq!(orders[1].order_price, 200.0);
         assert_eq!(orders[1].home_size, 200.0);
         assert_eq!(orders[1].foreign_size, 1.0);
         let _r = position.open_position(&mut orders[1]); // price 200.0, size 200.0
@@ -556,7 +562,7 @@ mod test_position {
 
         let _r = position.open_position(&mut orders[5]); // price 50.0, size 100.0
         println!("{:?} {:?}", position, orders[5]);
-        assert_eq!(orders[5].price, 50.0);
+        assert_eq!(orders[5].order_price, 50.0);
         assert_eq!(orders[5].home_size, 100.0);
         assert_eq!(
             position.price,
@@ -665,13 +671,6 @@ OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 0, 
 OrderResult { timestamp: 5, order_id: "0000-000000000000-002", order_sub_id: 1, order_type: Sell, post_only: true, create_time: 5, status: OpenPosition, open_price: 40.0, close_price: 0.0, size: 2.0, volume: 0.05, profit: 0.0, fee: 0.0012, total_profit: -0.0012 },
 OrderResult { timestamp: 8, order_id: "0000-000000000000-004", order_sub_id: 0, order_type: Buy, post_only: true, create_time: 5, status: ClosePosition, open_price: 40.0, close_price: 80.0, size: 2.0, volume: 0.025, profit: 1.0, fee: 0.0012, total_profit: 0.9988 },
 OrderResult { timestamp: 8, order_id: "0000-000000000000-004", order_sub_id: 1, order_type: Buy, post_only: true, create_time: 5, status: OpenPosition, open_price: 80.0, close_price: 0.0, size: 8.0, volume: 0.1, profit: 0.0, fee: 0.0048, total_profit: -0.0048 }]
-*/
-
-/*
-TODO:  ポジションオープンのときにログにクローズと書かれる
-TODO:  ポジションクローズができない。
-
-
 */
 
 /////////////////////////////////////////////////////////////////////////////////

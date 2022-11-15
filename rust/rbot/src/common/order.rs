@@ -198,7 +198,7 @@ pub struct OrderResult {
     pub status: OrderStatus,
     pub open_price: f64,
     pub close_price: f64,
-    pub price: f64,
+    pub order_price: f64,
     pub home_size: f64,
     pub foreign_size: f64,
     pub profit: f64,
@@ -213,7 +213,7 @@ impl OrderResult {
         order: &Order,
         status: OrderStatus,
     ) -> Self {
-        return OrderResult {
+        let mut result = OrderResult {
             update_time: timestamp,
             order_id: order.order_id.clone(),
             order_sub_id: 0,
@@ -221,9 +221,9 @@ impl OrderResult {
             post_only: order.post_only,
             create_time: order.create_time,
             status,
-            open_price: order.price,
+            open_price: 0.0,
             close_price: 0.0,
-            price: order.price,
+            order_price: order.price,
             home_size: order.size,
             foreign_size: order.size / order.price,
             profit: 0.0,
@@ -231,6 +231,8 @@ impl OrderResult {
             total_profit: 0.0,
             message: order.message.clone(),
         };
+
+        return result;
     }
 
     fn update_foreign_size(&mut self) {
@@ -264,22 +266,22 @@ impl OrderResult {
 impl OrderResult{
     pub fn __str__(&self) -> String {
         return format!("update_time: {:?}, order_id: {:?}, order_sub_id: {:?}, order_side: {:?}, post_only: {:?}, create_time: {:?}, status: {:?}, open_price: {:?}, close_price: {:?}, price: {:?}, home_size: {:?}, foreign_size: {:?}, profit: {:?}, fee: {:?}, total_profit: {:?}, message: {:?}",
-            self.update_time, 
-            self.order_id,
-            self.order_sub_id,
-            self.order_side,
-            self.post_only,
-            self.create_time,
-            self.status,
-            self.open_price,
-            self.close_price,
-            self.price,
-            self.home_size,
-            self.foreign_size,
-            self.profit,
-            self.fee,
-            self.total_profit,
-            self.message);
+                       self.update_time,
+                       self.order_id,
+                       self.order_sub_id,
+                       self.order_side,
+                       self.post_only,
+                       self.create_time,
+                       self.status,
+                       self.open_price,
+                       self.close_price,
+                       self.order_price,
+                       self.home_size,
+                       self.foreign_size,
+                       self.profit,
+                       self.fee,
+                       self.total_profit,
+                       self.message);
 
     }
 
@@ -288,6 +290,23 @@ impl OrderResult{
     }
 }
 
+/// on memoru log archive for OrderResult
+pub type LogBuffer = Vec<OrderResult>;
+
+/// make log buffer for log_order_result
+pub fn make_logbuffer() -> LogBuffer {
+    vec![]
+}
+
+pub fn log_order_result(log_buffer: &mut LogBuffer, order_result: OrderResult){
+    log_buffer.push(order_result);
+}
+
+pub fn print_order_results(log_buffer: &LogBuffer) {
+    for log in log_buffer {
+        println!("{:?}", log);
+    }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //     Unit TEST
