@@ -527,7 +527,7 @@ impl TradeTable {
         table += "</table>";
 
         if r.is_ok() {
-            r.unwrap() + &table
+            r.unwrap() + table.as_str()
         } else {
             "<H2>NO DATA INTABLE</H2>".to_string()
         }

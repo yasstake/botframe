@@ -69,7 +69,7 @@ pub struct DummySession {
     pub wallet_balance: f64, // 入金額
 }
 
-/// implment for Python export
+/// implement for Python export
 #[pymethods]
 impl DummySession {
     #[new]
@@ -454,16 +454,6 @@ impl DummySession {
             }
         }
     }
-
-    pub fn is_init(&mut self) -> bool {
-        if self.buy_board_edge_price == 0.0 {
-            return false;
-        }
-        else if self.sell_board_edge_price == 0.0 {
-            return false;
-        }
-        return true;
-    }
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -494,7 +484,7 @@ fn generate_trades_vec1(start_time: i64) -> Vec<Trade> {
 #[allow(unused_results)]
 #[cfg(test)]
 mod test_session {
-    use crate::common::order::make_logbuffer;
+    use crate::common::order::make_log_buffer;
     use crate::common::order::print_order_results;
 
     use super::*;
@@ -537,7 +527,7 @@ mod test_session {
 fn test_100_orders_open_close() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     let _r = session._make_order(OrderSide::Buy, 100.0, 100.0, 100, "".to_string());
     for t in generate_trades_vec1(0) {
@@ -556,7 +546,7 @@ fn test_100_orders_open_close() {
 fn test_100_orders_open_expire() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
@@ -580,7 +570,7 @@ fn test_100_orders_open_expire() {
 fn test_100_orders_open_small_order() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
@@ -604,7 +594,7 @@ fn test_100_orders_open_small_order() {
 fn test_100_orders_open_big_order() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
@@ -635,7 +625,7 @@ fn test_100_orders_open_big_order() {
 fn test_100_orders_open_big_close_small_position() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
@@ -673,7 +663,7 @@ fn test_100_orders_open_big_close_small_position() {
 fn test_100_orders_open_small_close_big_position() {
 
     let mut session = DummySession::new("FTX", "BTC-PERP");
-    let mut result_log = make_logbuffer();
+    let mut result_log = make_log_buffer();
 
     for t in generate_trades_vec1(0) {
         session.process_trade(&t, &mut result_log);
@@ -718,7 +708,7 @@ fn test_100_orders_open_small_close_big_position() {
     fn test_exec_event_execute_order0() {
         let mut session = DummySession::new("FTX", "BTC-PERP");
 
-        let mut result_log = make_logbuffer();
+        let mut result_log = make_log_buffer();
 
         let _r = session._make_order(OrderSide::Buy, 50.0, 10.0, 100, "".to_string());
         println!("{:?}", session.long_orders);

@@ -3,7 +3,7 @@ use rusqlite::params;
 
 use crate::{
     common::{
-        order::{log_order_result, make_logbuffer, OrderResult, OrderSide, OrderStatus, Trade},
+        order::{log_order_result, make_log_buffer, OrderResult, OrderSide, OrderStatus, Trade},
         time::{MicroSec, CEIL},
     },
     db::open_db,
@@ -47,7 +47,7 @@ impl BackTester {
         let db = open_db(self.exchange_name.as_str(), self.market_name.as_str());
         let mut statement = db.select_all_statement();
 
-        let mut order_history: Vec<OrderResult> = make_logbuffer();
+        let mut order_history: Vec<OrderResult> = make_log_buffer();
 
         Python::with_gil(|py| {
             let iter = statement

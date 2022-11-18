@@ -16,3 +16,4 @@ rust/rbot/test.db
 .DS_Store
 rust/botframework/TEST/python/*.xz
 .gitignore
+rust/rbot/src/test/.ipynb_checkpoints/*

@@ -21,8 +21,8 @@ impl OrderSide {
         }
     }
 
-    pub fn from_buy_side(buyside: bool) -> Self {
-        match buyside {
+    pub fn from_buy_side(buy_side: bool) -> Self {
+        match buy_side {
             true => OrderSide::Buy,
             _ => OrderSide::Sell,
         }
@@ -52,7 +52,7 @@ pub struct Trade {
 impl Trade {
     #[new]
     pub fn new(
-        time_microsec: MicroSec,
+        time_microsecond: MicroSec,
         order_side: OrderSide,
         price: f64,
         size: f64,
@@ -60,7 +60,7 @@ impl Trade {
         id: String,
     ) -> Self {
         return Trade {
-            time: time_microsec,
+            time: time_microsecond,
             order_side,
             price,
             size,
@@ -311,11 +311,11 @@ impl OrderResult {
     }
 }
 
-/// on memoru log archive for OrderResult
+/// on memory log archive for OrderResult
 pub type LogBuffer = Vec<OrderResult>;
 
 /// make log buffer for log_order_result
-pub fn make_logbuffer() -> LogBuffer {
+pub fn make_log_buffer() -> LogBuffer {
     vec![]
 }
 

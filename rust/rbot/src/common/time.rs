@@ -1,8 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use pyo3::prelude::*;
 
-
-
 pub const MICRO_SECOND: i64 = 1_000_000;
 pub const NANO_SECOND: i64 = 1_000_000_000;
 
@@ -34,13 +32,10 @@ pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
 pub fn CEIL(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     let unit_sec_micro = SEC(unit_sec);
 
-    let floor = ((microsecond+unit_sec_micro-1) / unit_sec_micro as i64) * unit_sec_micro;
+    let floor = ((microsecond + unit_sec_micro - 1) / unit_sec_micro as i64) * unit_sec_micro;
 
     return floor;
 }
-
-
-
 
 #[pyfunction]
 pub fn time_string(t: MicroSec) -> String {
@@ -66,7 +61,7 @@ pub fn DAYS(days: i64) -> MicroSec {
 #[allow(non_snake_case)]
 #[pyfunction]
 pub fn HHMM(hh: i64, mm: i64) -> MicroSec {
-    return ((hh * 60 * 60)*MICRO_SECOND + MIN(mm)) as MicroSec;
+    return ((hh * 60 * 60) * MICRO_SECOND + MIN(mm)) as MicroSec;
 }
 
 #[pyfunction]
@@ -80,7 +75,6 @@ pub fn MIN(sec: i64) -> MicroSec {
 pub fn SEC(sec: i64) -> MicroSec {
     return sec * MICRO_SECOND as MicroSec;
 }
-
 
 ///
 /// 現在時刻を返す(Microsecond)
@@ -98,13 +92,24 @@ mod time_test {
     use super::*;
     #[test]
     fn test_floor() {
-        assert_eq!(FLOOR(1_000_000-1, 1), parse_time("1970-01-01T00:00:00.000000+00:00"));
-        assert_eq!(FLOOR(1_000_000, 1), parse_time("1970-01-01T00:00:01.000000+00:00"));
+        assert_eq!(
+            FLOOR(1_000_000 - 1, 1),
+            parse_time("1970-01-01T00:00:00.000000+00:00")
+        );
+        assert_eq!(
+            FLOOR(1_000_000, 1),
+            parse_time("1970-01-01T00:00:01.000000+00:00")
+        );
 
-        assert_eq!(FLOOR(MIN(1)+1, 10), parse_time("1970-01-01T00:01:00.000000+00:00"));        
-        assert_eq!(FLOOR(DAYS(1) + MIN(1)+1, 60*10), parse_time("1970-01-02T00:00:00.000000+00:00"));                
+        assert_eq!(
+            FLOOR(MIN(1) + 1, 10),
+            parse_time("1970-01-01T00:01:00.000000+00:00")
+        );
+        assert_eq!(
+            FLOOR(DAYS(1) + MIN(1) + 1, 60 * 10),
+            parse_time("1970-01-02T00:00:00.000000+00:00")
+        );
     }
-
 
     #[test]
     fn test_to_str() {
@@ -129,7 +134,6 @@ mod time_test {
         assert_eq!(HHMM(1, 1), parse_time("1970-01-01T01:01:00.000000+00:00"));
         assert_eq!(MIN(2), parse_time("1970-01-01T00:02:00.000000+00:00"));
         assert_eq!(SEC(3), parse_time("1970-01-01T00:00:03.000000+00:00"));
-
     }
 
     #[test]
@@ -140,20 +144,18 @@ mod time_test {
 
     #[test]
     fn test_floor2() {
-        assert_eq!(        0, FLOOR(  999_999, 1));                
-        assert_eq!(1_000_000, FLOOR(1_000_000, 1));        
+        assert_eq!(0, FLOOR(999_999, 1));
+        assert_eq!(1_000_000, FLOOR(1_000_000, 1));
         assert_eq!(1_000_000, FLOOR(1_000_111, 1));
-        assert_eq!(10_000_000, FLOOR(10_123_111, 10));        
-        assert_eq!(10_000_000, FLOOR(19_123_111, 10));                
-        assert_eq!(20_000_000, FLOOR(29_123_111, 10));                        
+        assert_eq!(10_000_000, FLOOR(10_123_111, 10));
+        assert_eq!(10_000_000, FLOOR(19_123_111, 10));
+        assert_eq!(20_000_000, FLOOR(29_123_111, 10));
     }
 
     #[test]
     fn test_ceil() {
-        assert_eq!(1_000_000, CEIL(  999_999, 1));                
+        assert_eq!(1_000_000, CEIL(999_999, 1));
         assert_eq!(1_000_000, CEIL(1_000_000, 1));
-        assert_eq!(2_000_000, CEIL(1_000_001, 1));        
+        assert_eq!(2_000_000, CEIL(1_000_001, 1));
     }
-
-
 }

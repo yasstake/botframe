@@ -823,6 +823,7 @@ mod test_orders {
 
     #[test]
     fn test_buy_orders() {
+        // Buy orderキューの作成
         let mut orders = make_orders(true);
 
         assert_eq!(orders.q[0].price, 200.0);
@@ -834,29 +835,35 @@ mod test_orders {
         assert_eq!(orders.q[3].price, 100.0);
         assert_eq!(orders.q[3].size, 50.0);
 
-        println!("{:?}", orders.q[0]);
-        println!("{:?}", orders.q[1]);
-        println!("{:?}", orders.q[2]);
-        println!("{:?}", orders.q[3]);
 
         assert_eq!(orders.q[0].remain_size, 50.0);
         assert_eq!(orders.q[1].remain_size, 200.0);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
-        // TODO server delay test
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 200.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 199.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
 
-        println!("--after--");
-        println!("{:?}", orders.q[0]);
-        println!("{:?}", orders.q[1]);
-        println!("{:?}", orders.q[2]);
-        println!("{:?}", orders.q[3]);
+        // 書いオーダに対し、買いのログがきてもなにもしない。
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 1000, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.q[0].remain_size, 50.0);
+        assert_eq!(orders.q[1].remain_size, 200.0);
+
+        // 買いオーダーに対し、売りオーダーがきたら消費するが価格が同じ場合は消費しない。
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 1000, order_side: OrderSide::Sell, price: 200.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.q[0].remain_size, 50.0);
+        assert_eq!(orders.q[1].remain_size, 200.0);
+
+        // 買いオーダーに対し、売りオーダーがきたら消費する。200にたいし199なので消費するが、オーダー時間よりサーバディレイ分Delayしていないので消費しない。
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Sell, price: 199.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.q[0].remain_size, 50.0);
+        assert_eq!(orders.q[1].remain_size, 200.0);
+
+        // 買いオーダーに対し、売りオーダーがきたら消費する。200にたいし199なので消費する。
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 1000, order_side: OrderSide::Sell, price: 199.0, size:125.0, liquid: false, id: "".to_string() }, 0), true);
         assert_eq!(orders.q[0].remain_size, 0.0);
         assert_eq!(orders.q[1].remain_size, 125.0);
+
     }
 
     #[test]
     fn test_sell_orders() {
+        
         let mut orders = make_orders(false);
 
         assert_eq!(orders.q[0].price, 100.0);
@@ -870,9 +877,9 @@ mod test_orders {
 
         assert_eq!(orders.q[0].remain_size, 100.0);
         assert_eq!(orders.q[1].remain_size, 50.0);
-        // TODO: Upadte size
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        // 高い値段で売られても買いは約定しない。
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 200, order_side: OrderSide::Sell, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 200, order_side: OrderSide::Sell, price: 1000.0, size:125.0, liquid: false, id: "".to_string() }, 0), false);
 
         // まだ約定していない。
         match orders.pop_closed_order(1000) {
@@ -885,7 +892,7 @@ mod test_orders {
             }
         }
 
-        assert_eq!(orders.execute_remain_size(&Trade{ time: 0, order_side: OrderSide::Buy, price: 100.1, size:125.0, liquid: false, id: "".to_string() }, 0), true);
+        assert_eq!(orders.execute_remain_size(&Trade{ time: 200, order_side: OrderSide::Sell, price: 100.1, size:125.0, liquid: false, id: "".to_string() }, 0), true);
         println!("--after--");
         assert_eq!(orders.q[0].remain_size, 0.0);
         assert_eq!(orders.q[1].remain_size, 25.0);

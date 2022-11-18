@@ -9,7 +9,7 @@ use polars::prelude::Series;
 use polars::prelude::BooleanType;
 use polars::prelude::ChunkedArray;
 use polars_core::prelude::SortOptions;
-use polars_lazy::dsl::IntoLazy;
+use polars_lazy::prelude::IntoLazy;
 use polars_lazy::prelude::col;
 use polars_time::ClosedWindow;
 
