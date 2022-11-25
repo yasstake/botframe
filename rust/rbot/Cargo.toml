@@ -9,7 +9,8 @@ name = "rbot"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.17.1"}
+#pyo3 = { version = "0.17.1", features="multiple-pymethods"}
+pyo3 = { version = "0.17"}
 chrono = {version= "*"}
 
 strum_macros = {version  = "0.24"}
@@ -38,11 +39,13 @@ polars-time = {version="0.25.1"}
 ndarray = {version="0.15"}
 numpy = {version="0.17"}
 
-reqwest = {version = "0.11.12", features=["blocking", "stream", "gzip"]}
-futures = {version="0.3.21"}
+reqwest = {version = "0.11", features=["blocking", "gzip"]}
+futures = {version="0.3"}
 flate2 = {version="1.0.24"}
-async-compression = { version = "0.3.12", features = ["futures-io", "gzip"] }
+#async-compression = { version = "0.3", features = ["futures-io", "gzip"] }
 csv = {version="1.1.6"}
+#csv-async = {version="1.2.4"}
+zip = {version="0.6.3"}
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

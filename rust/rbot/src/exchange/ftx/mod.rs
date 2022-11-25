@@ -21,20 +21,6 @@ use crate::fs::db_full_path;
 use numpy::IntoPyArray;
 use numpy::PyArray2;
 
-trait Market {
-    fn info(&mut self) -> String;
-    fn select_trades(
-        &mut self,
-        from_time: MicroSec,
-        to_time: MicroSec,
-    ) -> PyResult<Py<PyArray2<f64>>>;
-    fn ohlcvv(
-        &mut self,
-        from_time: MicroSec,
-        to_time: MicroSec,
-        window_sec: i64,
-    ) -> PyResult<Py<PyArray2<f64>>>;
-}
 
 #[derive(Debug)]
 #[pyclass(name = "_FtxMarket")]
@@ -169,12 +155,6 @@ impl FtxMarket {
     pub fn select_all_statement(&self) -> Statement {
         return self.db.select_all_statement();
     }
-
-    /*
-    pub fn get_db(&self) -> TradeTable {
-        return self.db;
-    }
-    */
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

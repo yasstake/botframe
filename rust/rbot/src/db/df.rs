@@ -200,6 +200,7 @@ pub struct OhlcvBuffer {
     pub end_time: Vec<f64>,
 }
 
+
 impl OhlcvBuffer {
     pub fn new() -> Self {
         return OhlcvBuffer {
@@ -278,7 +279,8 @@ impl OhlcvBuffer {
         return df;
     }
 }
-
+*/
+/*
 /// Ohlcvのdfを内部にキャッシュとしてもつDataFrameクラス。
 /// ・　生DFのマージ（あたらしいdfの期間分のデータを削除してから追加。重複がないようにマージする。
 /// ・　OHLCVの生成
@@ -377,4 +379,28 @@ impl TradeBuffer {
 
         return df;
     }
+}
+
+
+pub fn make_empty_ohlcv() -> DataFrame {
+    let time = Series::new(KEY::time_stamp, Vec::<MicroSec>::new());
+    let open = Series::new(KEY::open, Vec::<f64>::new());
+    let high = Series::new(KEY::high, Vec::<f64>::new());
+    let low = Series::new(KEY::low, Vec::<f64>::new());
+    let close = Series::new(KEY::close, Vec::<f64>::new());
+    let vol = Series::new(KEY::vol, Vec::<f64>::new());
+    let sell_vol = Series::new(KEY::sell_vol, Vec::<f64>::new());
+    let sell_count = Series::new(KEY::sell_count, Vec::<f64>::new());
+    let buy_vol = Series::new(KEY::buy_vol, Vec::<f64>::new());
+    let buy_count = Series::new(KEY::buy_count, Vec::<f64>::new());
+    let start_time = Series::new(KEY::start_time, Vec::<MicroSec>::new());
+    let end_time = Series::new(KEY::end_time, Vec::<MicroSec>::new());
+
+    let df = DataFrame::new(vec![
+        time, open, high, low, close, vol, sell_vol, sell_count, buy_vol, buy_count,
+        start_time, end_time,
+    ])
+    .unwrap();
+
+    return df;
 }

@@ -1,11 +1,15 @@
 use crate::common::order::{TimeChunk, Trade};
 use crate::common::time::{time_string, MicroSec, CEIL, DAYS, FLOOR, MICRO_SECOND, NOW, SEC};
 use crate::OrderSide;
+use numpy::PyArray2;
+use numpy::IntoPyArray;
 use polars::prelude::DataFrame;
+use pyo3::{PyResult, Py, Python};
 use rusqlite::{params, params_from_iter, Connection, Error, Result, Statement};
 
+
 use super::df::{merge_df, ohlcv_from_ohlcv_df};
-use crate::db::df::end_time_df;
+use crate::db::df::{end_time_df, make_empty_ohlcv};
 use crate::db::df::ohlcv_df;
 use crate::db::df::select_df;
 use crate::db::df::start_time_df;
@@ -128,11 +132,13 @@ impl TradeTable {
 
     pub fn open(name: &str) -> Result<Self, Error> {
         let result = Connection::open(name);
+        log::debug!("Database open path = {}", name);
 
         match result {
             Ok(conn) => {
                 let df = TradeBuffer::new().to_dataframe();
-                let ohlcv = ohlcv_df(&df, 0, 0, TradeTable::OHLCV_WINDOW_SEC);
+                // let ohlcv = ohlcv_df(&df, 0, 0, TradeTable::OHLCV_WINDOW_SEC);
+                let ohlcv = make_empty_ohlcv();
 
                 Ok(TradeTable {
                     file_name: name.to_string(),
@@ -142,7 +148,7 @@ impl TradeTable {
                 })
             }
             Err(e) => {
-                println!("{:?}", e);
+                log::debug!("{:?}", e);
                 return Err(e);
             }
         }
@@ -232,64 +238,6 @@ impl TradeTable {
         return statement;
     }
 
-    /*
-        //
-        pub fn select_iter(&mut self, from_time: MicroSec, to_time: MicroSec) -> Result<Rows, Error> {
-            let mut sql = "";
-            let mut param = vec![];
-
-            if 0 < to_time {
-                sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
-                param = vec![from_time, to_time];
-            } else {
-                //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-                sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-                param = vec![from_time];
-            }
-
-            let mut statement = self.connection.prepare(sql).unwrap();
-
-            let start_time = NOW();
-
-    //        let rows = statement.query(params_from_iter(param.iter()));
-            return statement.query(params_from_iter(param.iter()));
-
-        }
-        */
-    /*
-            match rows {
-                Ok(r) => {
-                    return r;
-                },
-                Err(e) => {
-                    log::warn!("select error = {}", e);
-                    panic!("");
-                }
-            }
-
-            /*
-            let transaction_iter = statement
-                .query_map(params_from_iter(param.iter()), |row| {
-                    let bs_str: String = row.get_unwrap(1);
-                    let bs = OrderSide::from_str(bs_str.as_str());
-
-                    Ok(Trade {
-                        time: row.get_unwrap(0),
-                        price: row.get_unwrap(2),
-                        size: row.get_unwrap(3),
-                        order_side: bs,
-                        liquid: row.get_unwrap(4),
-                        id: row.get_unwrap(5),
-                    })
-                })
-                .unwrap();
-
-            log::debug!("create iter {} microsec", NOW() - start_time);
-
-            return transaction_iter;
-            */
-        }
-    */
     pub fn select_df_from_db(&mut self, from_time: MicroSec, to_time: MicroSec) -> DataFrame {
         let mut buffer = TradeBuffer::new();
 
@@ -408,6 +356,26 @@ impl TradeTable {
         }
     }
 
+    pub fn py_ohlcvv(
+        &mut self,
+        from_time: MicroSec,
+        to_time: MicroSec,
+        window_sec: i64,
+    ) -> PyResult<Py<PyArray2<f64>>> {
+        let array = self.ohlcv_array(from_time, to_time, window_sec);
+
+        let r = Python::with_gil(|py| {
+            let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+
+            return py_array2.to_owned();
+        });
+
+        return Ok(r);
+    }
+
+
+
+
     pub fn ohlcv_array(
         &mut self,
         mut from_time: MicroSec,
@@ -436,6 +404,22 @@ impl TradeTable {
             .unwrap();
 
         array
+    }
+
+    pub fn py_select_trades(
+        &mut self,
+        from_time: MicroSec,
+        to_time: MicroSec,
+    ) -> PyResult<Py<PyArray2<f64>>> {
+        let array = self.select_array(from_time, to_time);
+
+        let r = Python::with_gil(|py| {
+            let py_array2: &PyArray2<f64> = array.into_pyarray(py);
+
+            return py_array2.to_owned();
+        });
+
+        return Ok(r);
     }
 
     pub fn select_array(&mut self, from_time: MicroSec, to_time: MicroSec) -> ndarray::Array2<f64> {
@@ -705,7 +689,7 @@ impl TradeTable {
         // let trades_len = trades.len();
         let mut insert_len = 0;
 
-        check_skip_time(trades);
+        // check_skip_time(trades);
 
         let sql = r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
                                 values (?1, ?2, ?3, ?4, ?5, ?6) "#;

@@ -38,7 +38,7 @@ impl OrderSide {
 
 // Represent one Trade execution.
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Trade {
     pub time: MicroSec,
     pub order_side: OrderSide,
