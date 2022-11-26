@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime};
+use csv::StringRecord;
 use numpy::PyArray2;
 use pyo3::prelude::*;
 //use pyo3::prelude::pymethods;
@@ -42,6 +43,7 @@ impl BinanceMarket {
         };
     }
 
+
     pub fn download(&mut self, ndays: i32, force: bool) -> i64 {
         let (tx, rx): (Sender<Vec<Trade>>, Receiver<Vec<Trade>>) = mpsc::channel();
 
@@ -52,32 +54,7 @@ impl BinanceMarket {
             let mut buffer: Vec<Trade> = vec![];                
 
             let result = log_download(url.as_str(), false, | rec| {
-
-                let id = rec.get(0).unwrap_or_default().to_string();
-                let price = rec
-                    .get(1)
-                    .unwrap_or_default()
-                    .parse::<f64>()
-                    .unwrap_or_default();
-                let size = rec
-                    .get(2)
-                    .unwrap_or_default()
-                    .parse::<f64>()
-                    .unwrap_or_default();
-                let timestamp = rec
-                    .get(4)
-                    .unwrap_or_default()
-                    .parse::<MicroSec>()
-                    .unwrap_or_default()
-                    * 1_000;
-                let is_buyer_make = rec.get(5).unwrap_or_default();
-                let order_side = match is_buyer_make {
-                    "True" => OrderSide::Buy,
-                    "False" => OrderSide::Sell,
-                    _ => OrderSide::Unknown,
-                };
-
-                let mut trade = Trade::new(timestamp, order_side, price, size, false, id);
+                let trade = BinanceMarket::rec_to_trade(&rec);
 
                 buffer.push(trade);
 
@@ -91,6 +68,7 @@ impl BinanceMarket {
 
             if buffer.len() != 0 {
                 let _result = tx.send(buffer.to_vec());
+                buffer.clear();
             }
             
             match result {
@@ -98,13 +76,14 @@ impl BinanceMarket {
                     log::debug!("Downloaded rec = {} ", count);
                 }
                 Err(e) => {
-                    log::error!("{}", e);
+                    log::error!("extract err = {}", e);
                 }
             }
         });
 
         let mut insert_rec_no = 0;
 
+        // TODO: sqlite クラスへ移動させて共通にする。
         loop {
             match rx.recv() {
                 Ok(trades) => {
@@ -174,6 +153,37 @@ impl BinanceMarket {
             HISTORY_WEB_BASE, self.name, self.name, yyyy, mm, dd
         );
     }
+
+    fn rec_to_trade(rec: &StringRecord) -> Trade {
+        let id = rec.get(0).unwrap_or_default().to_string();
+        let price = rec
+            .get(1)
+            .unwrap_or_default()
+            .parse::<f64>()
+            .unwrap_or_default();
+        let size = rec
+            .get(2)
+            .unwrap_or_default()
+            .parse::<f64>()
+            .unwrap_or_default();
+        let timestamp = rec
+            .get(4)
+            .unwrap_or_default()
+            .parse::<MicroSec>()
+            .unwrap_or_default()
+            * 1_000;
+        let is_buyer_make = rec.get(5).unwrap_or_default();
+        let order_side = match is_buyer_make {
+            "True" => OrderSide::Buy,
+            "False" => OrderSide::Sell,
+            _ => OrderSide::Unknown,
+        };
+
+        let trade = Trade::new(timestamp, order_side, price, size, false, id);
+
+        return trade;
+    }
+
 
     /*
     pub async fn async_download(&mut self, ndays: i32, force: bool) -> i64 {
@@ -315,4 +325,5 @@ mod binance_test {
         println!("Let's donwload");
         market.download(1, false);
     }
+
 }
