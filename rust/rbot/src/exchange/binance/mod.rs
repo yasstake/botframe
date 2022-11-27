@@ -20,7 +20,7 @@ use crate::fs::db_full_path;
 use super::{gzip_log_download, log_download};
 
 #[derive(Debug)]
-#[pyclass(name = "_BNMarket")]
+#[pyclass(name = "_BinanceMarket")]
 pub struct BinanceMarket {
     name: String,
     pub dummy: bool,
@@ -59,7 +59,7 @@ impl BinanceMarket {
             }
             else {
             self.db
-                .select_gap_chunks(NOW() - DAYS(ndays + 1), NOW() - DAYS(1), HHMM(3, 0)) 
+                .select_gap_chunks(NOW() - DAYS(ndays + 1), NOW() - DAYS(1), HHMM(12, 0)) 
             };
         
         let days_gap = TradeTable::time_chunks_to_days(&time_gap);
@@ -160,6 +160,7 @@ impl BinanceMarket {
         return self.db._repr_html_();
     }
 }
+
 
 const HISTORY_WEB_BASE: &str = "https://data.binance.vision/data/spot/daily/trades";
 impl BinanceMarket {
@@ -355,5 +356,12 @@ mod binance_test {
 
         println!("force download");
         market.download(1, true);        
+    }
+
+    #[test]
+    fn test_db_info() {
+        let mut market = BinanceMarket::new("BTCBUSD", true);
+
+        println!("{:?}", market.db.info());
     }
 }

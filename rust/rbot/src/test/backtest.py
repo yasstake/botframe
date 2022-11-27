@@ -43,7 +43,7 @@ class Agent(BaseAgent):
 
     
 
-bt = BackTester("FTX", "BTC-PERP")
+bt = BackTester("BN", "BTCBUSD")
 
 r = bt.run(Agent())
 
