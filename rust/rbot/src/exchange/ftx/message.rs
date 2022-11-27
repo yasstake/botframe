@@ -66,7 +66,6 @@ impl FtxTrade {
             price: self.price,
             size: self.size,
             order_side: OrderSide::from_str(&self.side),
-            liquid: self.liquidation,
             id: self.id.to_string()
         }
     }

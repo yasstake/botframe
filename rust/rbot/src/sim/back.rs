@@ -60,8 +60,7 @@ impl BackTester {
                         price: row.get_unwrap(2),
                         size: row.get_unwrap(3),
                         order_side: bs,
-                        liquid: row.get_unwrap(4),
-                        id: row.get_unwrap(5),
+                        id: row.get_unwrap(4),
                     })
                 })
                 .unwrap();

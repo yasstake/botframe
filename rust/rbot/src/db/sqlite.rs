@@ -1,5 +1,5 @@
 use crate::common::order::{TimeChunk, Trade};
-use crate::common::time::{time_string, MicroSec, CEIL, DAYS, FLOOR, MICRO_SECOND, NOW, SEC};
+use crate::common::time::{time_string, MicroSec, CEIL, DAYS, FLOOR, MICRO_SECOND, NOW, SEC, FLOOR_DAY};
 use crate::OrderSide;
 use numpy::PyArray2;
 use numpy::IntoPyArray;
@@ -161,7 +161,6 @@ impl TradeTable {
                 action  TEXT,
                 price   NUMBER,
                 size    NUMBER,
-                liquid  BOOL DEFAULT FALSE,
                 id      TEXT primary key
             )",
             (),
@@ -193,11 +192,11 @@ impl TradeTable {
         let param: Vec<i64>;
 
         if 0 < to_time {
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
+            sql = "select time_stamp, action, price, size, id from trades where $1 <= time_stamp and time_stamp < $2 order by time_stamp";
             param = vec![from_time, to_time];
         } else {
             //sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
-            sql = "select time_stamp, action, price, size, liquid, id from trades where $1 <= time_stamp order by time_stamp";
+            sql = "select time_stamp, action, price, size, id from trades where $1 <= time_stamp order by time_stamp";
             param = vec![from_time];
         }
 
@@ -215,8 +214,7 @@ impl TradeTable {
                     price: row.get_unwrap(2),
                     size: row.get_unwrap(3),
                     order_side: bs,
-                    liquid: row.get_unwrap(4),
-                    id: row.get_unwrap(5),
+                    id: row.get_unwrap(4),
                 })
             })
             .unwrap();
@@ -234,7 +232,7 @@ impl TradeTable {
     }
 
     pub fn select_all_statement(&self) -> Statement {
-        let statement = self.connection.prepare("select time_stamp, action, price, size, liquid, id from trades order by time_stamp").unwrap();
+        let statement = self.connection.prepare("select time_stamp, action, price, size, id from trades order by time_stamp").unwrap();
         return statement;
     }
 
@@ -433,7 +431,6 @@ impl TradeTable {
                 KEY::price,
                 KEY::size,
                 KEY::order_side,
-                KEY::liquid,
             ])
             .unwrap()
             .to_ndarray::<Float64Type>()
@@ -517,6 +514,7 @@ impl TradeTable {
         }
     }
 
+    /*
     /// select min(start) time_stamp in db
     pub fn start_time(&self) -> Result<MicroSec, Error> {
         let sql = "select min(time_stamp) from trades";
@@ -528,10 +526,24 @@ impl TradeTable {
 
         return r;
     }
+    */
+
+    pub fn start_time(&self) -> Result<MicroSec, Error> {
+        let sql = "select time_stamp from trades order by time_stamp asc limit 1";
+
+        let r = self.connection.query_row(sql, [], |row| {
+            let min: i64 = row.get_unwrap(0);
+            Ok(min)
+        });
+
+        return r;
+    }
+
 
     /// select max(end) time_stamp in db
     pub fn end_time(&self) -> Result<MicroSec, Error> {
-        let sql = "select max(time_stamp) from trades";
+        // let sql = "select max(time_stamp) from trades";
+        let sql = "select time_stamp from trades order by time_stamp desc limit 1";        
 
         let r = self.connection.query_row(sql, [], |row| {
             let max: i64 = row.get_unwrap(0);
@@ -553,21 +565,25 @@ impl TradeTable {
         }
 
         let mut chunk = self.find_time_chunk_from(from_time, to_time, allow_size);
-
+        log::debug!("chunk before {:?}", chunk);
         // find in db
         let mut c = self.select_time_chunks_in_db(from_time, to_time, allow_size);
         chunk.append(&mut c);
+        log::debug!("chunk in db {:?}", chunk);
 
         // find after db time
         let mut c = self.find_time_chunk_to(from_time, to_time, allow_size);
         chunk.append(&mut c);
+        log::debug!("chunk after {:?}", chunk);
 
+        /*
         if chunk.len() == 0 && from_time != to_time {
             return vec![TimeChunk {
                 start: from_time,
                 end: to_time,
             }];
         }
+        */
 
         return chunk;
     }
@@ -659,7 +675,7 @@ impl TradeTable {
                 let start_time: MicroSec = row.get_unwrap(0);
                 let missing_width: MicroSec = row.get_unwrap(1);
 
-                log::debug!("{}- gap{}", time_string(start_time), missing_width);
+                log::debug!("{}- gap({})", time_string(start_time), missing_width);
                 Ok(TimeChunk {
                     start: start_time,
                     end: start_time + missing_width,
@@ -674,6 +690,7 @@ impl TradeTable {
 
                 // skip first row.
                 if index != 0 {
+                    log::debug!("gap chunk: {}-{}", time_string(c.start), time_string(c.end)); 
                     chunks.push(c);
                 }
                 index += 1;
@@ -681,6 +698,33 @@ impl TradeTable {
         }
 
         return chunks;
+    }
+
+    /// make a list of days with in time gap chunks
+    pub fn time_chunks_to_days(chunks: &Vec<TimeChunk>) -> Vec<MicroSec> {
+        let mut days: Vec<MicroSec> = vec![];
+
+        let mut current_day:MicroSec = 0;
+
+        for chunk in chunks {
+            log::debug!("chunk: {} -> {}", time_string(chunk.start), time_string(chunk.end));
+            let mut new_day = FLOOR_DAY(chunk.start);
+            if current_day != new_day  {
+                log::debug!("DAY: {}", time_string(new_day));                                
+                days.push(new_day);
+                current_day = new_day;                
+
+                new_day += DAYS(1);
+                while new_day < chunk.end {
+                    log::debug!("DAY: {}", time_string(new_day));                                                        
+                    days.push(new_day);
+                    current_day = new_day;
+                    new_day += DAYS(1);
+                }
+            }
+        }
+
+        return days;
     }
 
     pub fn insert_records(&mut self, trades: &Vec<Trade>) -> Result<i64, Error> {
@@ -691,8 +735,8 @@ impl TradeTable {
 
         // check_skip_time(trades);
 
-        let sql = r#"insert or replace into trades (time_stamp, action, price, size, liquid, id)
-                                values (?1, ?2, ?3, ?4, ?5, ?6) "#;
+        let sql = r#"insert or replace into trades (time_stamp, action, price, size, id)
+                                values (?1, ?2, ?3, ?4, ?5) "#;
 
         for rec in trades {
             let result = tx.execute(
@@ -702,7 +746,6 @@ impl TradeTable {
                     rec.order_side.to_string(),
                     rec.price,
                     rec.size,
-                    rec.liquid,
                     rec.id
                 ],
             );
@@ -765,9 +808,9 @@ mod test_transaction_table {
         let mut tr = TradeTable::open("test.db").unwrap();
         tr.recreate_table();
 
-        let rec1 = Trade::new(1, OrderSide::Buy, 10.0, 10.0, false, "abc1".to_string());
-        let rec2 = Trade::new(2, OrderSide::Buy, 10.1, 10.2, false, "abc2".to_string());
-        let rec3 = Trade::new(3, OrderSide::Buy, 10.2, 10.1, false, "abc3".to_string());
+        let rec1 = Trade::new(1, OrderSide::Buy, 10.0, 10.0, "abc1".to_string());
+        let rec2 = Trade::new(2, OrderSide::Buy, 10.1, 10.2, "abc2".to_string());
+        let rec3 = Trade::new(3, OrderSide::Buy, 10.2, 10.1, "abc3".to_string());
 
         let _r = tr.insert_records(&vec![rec1, rec2, rec3]);
     }
@@ -876,6 +919,21 @@ mod test_transaction_table {
     }
 
     #[test]
+    fn test_time_chunks_to_days() {
+        let chunks = vec![
+            TimeChunk{start:DAYS(1), end:DAYS(1)+100}
+        ];
+
+        assert_eq!(TradeTable::time_chunks_to_days(&chunks), vec![DAYS(1)]);
+
+        let chunks = vec![
+            TimeChunk{start:DAYS(1), end:DAYS(3)+100}
+        ];
+
+        assert_eq!(TradeTable::time_chunks_to_days(&chunks), vec![DAYS(1), DAYS(2), DAYS(3)]);
+    }
+
+    #[test]
     fn test_select_ohlcv_df() {
         init_log();
         let db_name = db_full_path("FTX", "BTC-PERP");
@@ -936,7 +994,7 @@ mod test_transaction_table {
         let handle = th
             .spawn(move || {
                 for i in 0..100 {
-                    let trade = Trade::new(i, OrderSide::Buy, 0.0, 10.0, false, "abc1".to_string());
+                    let trade = Trade::new(i, OrderSide::Buy, 0.0, 10.0, "abc1".to_string());
                     println!("<{:?}", trade);
                     let _ = tx.send(trade);
                 }
@@ -961,7 +1019,7 @@ mod test_transaction_table {
         });
 
         for i in 0..100 {
-            let trade = Trade::new(i, OrderSide::Buy, 10.0, 10.0, false, "abc1".to_string());
+            let trade = Trade::new(i, OrderSide::Buy, 10.0, 10.0, "abc1".to_string());
             println!("<{:?}", trade);
             let _result = tx.send(trade);
         }

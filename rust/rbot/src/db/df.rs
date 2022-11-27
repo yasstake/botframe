@@ -23,7 +23,7 @@ pub mod KEY {
     pub const price: &str = "price";
     pub const size: &str = "size";
     pub const order_side: &str = "order_side";
-    pub const liquid: &str = "liquid";
+    // pub const liquid: &str = "liquid";
     #[allow(unused)]
     pub const id: &str = "id";
 
@@ -330,7 +330,6 @@ pub struct TradeBuffer {
     pub price: Vec<f64>,
     pub size: Vec<f64>,
     pub order_side: Vec<bool>,
-    pub liquid: Vec<bool>,
 }
 
 impl TradeBuffer {
@@ -340,7 +339,6 @@ impl TradeBuffer {
             price: Vec::new(),
             size: Vec::new(),
             order_side: Vec::new(),
-            liquid: Vec::new(),
         };
     }
 
@@ -350,7 +348,6 @@ impl TradeBuffer {
         self.price.clear();
         self.size.clear();
         self.order_side.clear();
-        self.liquid.clear();
     }
 
     #[allow(unused)]
@@ -365,7 +362,6 @@ impl TradeBuffer {
         self.price.push(trade.price);
         self.size.push(trade.size);
         self.order_side.push(trade.order_side.is_buy_side());
-        self.liquid.push(trade.liquid);
     }
 
     pub fn to_dataframe(&self) -> DataFrame {
@@ -373,9 +369,8 @@ impl TradeBuffer {
         let price = Series::new(KEY::price, self.price.to_vec());
         let size = Series::new(KEY::size, self.size.to_vec());
         let order_side = Series::new(KEY::order_side, self.order_side.to_vec());
-        let liquid = Series::new(KEY::liquid, self.liquid.to_vec());
 
-        let df = DataFrame::new(vec![time_stamp, price, size, order_side, liquid]).unwrap();
+        let df = DataFrame::new(vec![time_stamp, price, size, order_side]).unwrap();
 
         return df;
     }

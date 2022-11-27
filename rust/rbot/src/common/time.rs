@@ -28,6 +28,10 @@ pub fn FLOOR(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     return floor;
 }
 
+pub fn FLOOR_DAY(timestamp: MicroSec) -> MicroSec {
+    return FLOOR(timestamp, 24 * 60 * 60);
+}
+
 #[allow(non_snake_case)]
 pub fn CEIL(microsecond: MicroSec, unit_sec: i64) -> MicroSec {
     let unit_sec_micro = SEC(unit_sec);

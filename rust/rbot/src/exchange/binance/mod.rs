@@ -9,11 +9,11 @@ use pyo3::prelude::*;
 //use pyo3::prelude::pymethods;
 
 use crate::common::init_debug_log;
-use crate::common::order::{OrderSide, Trade};
-use crate::common::time::NOW;
+use crate::common::order::{OrderSide, Trade, TimeChunk};
 use crate::common::time::SEC;
 use crate::common::time::{time_string, DAYS};
 use crate::common::time::{to_naive_datetime, MicroSec};
+use crate::common::time::{HHMM, NOW};
 use crate::db::sqlite::TradeTable;
 use crate::fs::db_full_path;
 
@@ -43,42 +43,69 @@ impl BinanceMarket {
         };
     }
 
-
-    pub fn download(&mut self, ndays: i32, force: bool) -> i64 {
+    pub fn download(&mut self, ndays: i64, force: bool) -> i64 {
         let (tx, rx): (Sender<Vec<Trade>>, Receiver<Vec<Trade>>) = mpsc::channel();
 
-        let url = self.make_historical_data_url_timestamp(NOW() - DAYS(2));
-        log::debug!("download url = {}", url);
+        let mut download_rec: i64 = 0;
+        let from_time = NOW() - DAYS(ndays+1);
+        let to_time = NOW() - DAYS(1);
+
+        let time_gap =
+            if force {
+                vec![TimeChunk{
+                    start: from_time,
+                    end: to_time
+                }]
+            }
+            else {
+            self.db
+                .select_gap_chunks(NOW() - DAYS(ndays + 1), NOW() - DAYS(1), HHMM(3, 0)) 
+            };
+        
+        let days_gap = TradeTable::time_chunks_to_days(&time_gap);
+        log::debug!("GAP TIME: {:?}", time_gap);        
+        log::debug!("GAP DAYS: {:?}", days_gap);                
+
+        let mut urls: Vec<String> = vec![];
+        for day in days_gap {
+            urls.push(self.make_historical_data_url_timestamp(day));
+        }
 
         let _handle = thread::spawn(move || {
-            let mut buffer: Vec<Trade> = vec![];                
+            for url in urls {
+                log::debug!("download url = {}", url);
 
-            let result = log_download(url.as_str(), false, | rec| {
-                let trade = BinanceMarket::rec_to_trade(&rec);
+                let mut buffer: Vec<Trade> = vec![];
 
-                buffer.push(trade);
+                let result = log_download(url.as_str(), false, |rec| {
+                    let trade = BinanceMarket::rec_to_trade(&rec);
 
-                if 2000 < buffer.len() {
+                    buffer.push(trade);
+
+                    if 2000 < buffer.len() {
+                        let _result = tx.send(buffer.to_vec());
+                        buffer.clear();
+                    }
+                    // TODO: check send error
+                });
+
+                if buffer.len() != 0 {
                     let _result = tx.send(buffer.to_vec());
                     buffer.clear();
                 }
-                // TODO: check send error
 
-            });
-
-            if buffer.len() != 0 {
-                let _result = tx.send(buffer.to_vec());
-                buffer.clear();
-            }
-            
-            match result {
-                Ok(count) => {
-                    log::debug!("Downloaded rec = {} ", count);
-                }
-                Err(e) => {
-                    log::error!("extract err = {}", e);
+                match result {
+                    Ok(count) => {
+                        log::debug!("Downloaded rec = {} ", count);
+                        download_rec += count;
+                    }
+                    Err(e) => {
+                        log::error!("extract err = {}", e);
+                    }
                 }
             }
+
+            log::debug!("download rec = {}", download_rec);
         });
 
         let mut insert_rec_no = 0;
@@ -179,11 +206,10 @@ impl BinanceMarket {
             _ => OrderSide::Unknown,
         };
 
-        let trade = Trade::new(timestamp, order_side, price, size, false, id);
+        let trade = Trade::new(timestamp, order_side, price, size, id);
 
         return trade;
     }
-
 
     /*
     pub async fn async_download(&mut self, ndays: i32, force: bool) -> i64 {
@@ -322,8 +348,12 @@ mod binance_test {
     fn test_download() {
         init_debug_log();
         let mut market = BinanceMarket::new("BTCBUSD", true);
+        println!("{}", time_string(market.db.start_time().unwrap()));
+        println!("{}", time_string(market.db.end_time().unwrap()));        
         println!("Let's donwload");
-        market.download(1, false);
-    }
+        market.download(4, false);
 
+        println!("force download");
+        market.download(1, true);        
+    }
 }

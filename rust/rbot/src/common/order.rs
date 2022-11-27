@@ -44,7 +44,6 @@ pub struct Trade {
     pub order_side: OrderSide,
     pub price: f64,
     pub size: f64,
-    pub liquid: bool,
     pub id: String,
 }
 
@@ -56,7 +55,6 @@ impl Trade {
         order_side: OrderSide,
         price: f64,
         size: f64,
-        liquid: bool,
         id: String,
     ) -> Self {
         return Trade {
@@ -64,22 +62,21 @@ impl Trade {
             order_side,
             price,
             size,
-            liquid,
             id,
         };
     }
 
     pub fn to_csv(&self) -> String {
         format!(
-            "{:?}, {:?}, {:?}, {:?}, {:?}, {:?}\n",
-            self.time, self.order_side, self.price, self.size, self.liquid, self.id
+            "{:?}, {:?}, {:?}, {:?}, {:?}\n",
+            self.time, self.order_side, self.price, self.size, self.id
         )
     }
 
     pub fn __str__(&self) -> String {
         format!(
-            "{{timestamp:{:?}, order_side:{:?}, price:{:?}, size:{:?}, liquid:{:?}, id:{:?}}}",
-            self.time, self.order_side, self.price, self.size, self.liquid, self.id
+            "{{timestamp:{:?}, order_side:{:?}, price:{:?}, size:{:?}, id:{:?}}}",
+            self.time, self.order_side, self.price, self.size, self.id
         )
     }
 

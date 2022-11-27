@@ -167,6 +167,11 @@ class Market:
             key = Market.key(exchange, market)            
             cls.MARKET[key] = m
             return m
+        elif exchange == "BN":
+            m = BinanceMarket(market, cls.DUMMY_MODE)
+            key = Market.key(exchange, market)
+            cls.MARKET[key] = m
+            return m
 
     @classmethod
     def download(cls, ndays):
@@ -186,7 +191,7 @@ class Market:
     def key(exchange, market):
         return exchange.upper() + "/" + market.upper()
 
-
+'''
 class FtxMarket:
     def __init__(self, name, dummy=True):
         self.dummy = dummy
@@ -202,6 +207,27 @@ class FtxMarket:
 
     def download(self, ndays, force=False):
         return self.ftx.download(ndays, force)
+
+    def __getattr__(self, func):
+        return getattr(self.ftx, func)
+'''
+
+
+class BinanceMarket:
+    def __init__(self, name, dummy=True):
+        self.dummy = dummy
+        self.market = _BinanceMarket(name, dummy)
+        self.exchange_name = "BN"
+        self.market_name = name
+
+    def select_trades(self, from_time, to_time):
+        return trades_to_df(self.market.select_trades(from_time, to_time))
+
+    def ohlcvv(self, from_time, to_time, window_sec):
+        return ohlcvv_to_df(self.market.ohlcvv(from_time, to_time, window_sec))
+
+    def download(self, ndays, force=False):
+        return self.market.download(ndays, force)
 
     def __getattr__(self, func):
         return getattr(self.ftx, func)

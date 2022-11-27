@@ -470,10 +470,10 @@ fn generate_trades_vec1(start_time: i64) -> Vec<Trade> {
 
     for i in 1..100 {
         if i % 2 == 0 {
-            trades.push(Trade{ time: SEC(start_time + i), order_side: OrderSide::Buy, price: (i as f64), size: (i*2) as f64, liquid: false, id: i.to_string()});
+            trades.push(Trade{ time: SEC(start_time + i), order_side: OrderSide::Buy, price: (i as f64), size: (i*2) as f64, id: i.to_string()});
         }
         else {
-            trades.push(Trade{ time: SEC(start_time + i), order_side: OrderSide::Sell, price: (i as f64), size: (i*2) as f64, liquid: false, id: i.to_string()});
+            trades.push(Trade{ time: SEC(start_time + i), order_side: OrderSide::Sell, price: (i as f64), size: (i*2) as f64, id: i.to_string()});
         }
     }
     
@@ -715,7 +715,7 @@ fn test_100_orders_open_small_close_big_position() {
         assert_eq!(session.get_long_order_size(), 10.0);
         assert_eq!(session.get_short_order_size(), 0.0);
 
-        let trade = Trade{time: 1, order_side: OrderSide::Sell, price: 50.0, size: 5.0, liquid: false, id: "".to_string()};
+        let trade = Trade{time: 1, order_side: OrderSide::Sell, price: 50.0, size: 5.0, id: "".to_string()};
 
         session.process_trade(&trade, &mut result_log);
         println!("{:?}", session.long_orders);
@@ -725,7 +725,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.0,
             size: 5.0,
-            liquid: false,
             id: "".to_string()
         });
         println!("{:?}", session.long_orders);
@@ -747,7 +746,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Buy,
             price: 150.0,
             size: 150.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
 
@@ -756,7 +754,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Buy,
             price: 151.0,
             size: 151.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
 
@@ -772,7 +769,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 50.0,
             size: 150.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -784,7 +780,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 5.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -796,7 +791,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 5.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -807,7 +801,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 5.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -832,7 +825,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 11.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -843,7 +835,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 20.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -854,7 +845,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 49.5,
             size: 100.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.positions);
@@ -872,7 +862,6 @@ fn test_100_orders_open_small_close_big_position() {
             order_side: OrderSide::Sell,
             price: 79.5,
             size: 200.0,
-            liquid: false,
             id: "".to_string()
         }, &mut tick_result);
         println!("{:?}", session.long_orders);

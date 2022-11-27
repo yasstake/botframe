@@ -14,7 +14,8 @@ use common::{
     init_log,
     init_debug_log,
 };
-use exchange::ftx::FtxMarket;
+// use exchange::ftx::FtxMarket;
+use exchange::binance::BinanceMarket;
 
 use common::time::*;
 use sim::session::DummySession;
@@ -37,7 +38,8 @@ fn rbot(_py: Python, m: &PyModule) -> PyResult<()> {
     // classes
     m.add_class::<Order>()?;
     m.add_class::<OrderSide>()?;
-    m.add_class::<FtxMarket>()?;
+    //m.add_class::<FtxMarket>()?;
+    m.add_class::<BinanceMarket>()?;
     m.add_class::<DummySession>()?; 
     m.add_class::<BackTester>()?; 
 

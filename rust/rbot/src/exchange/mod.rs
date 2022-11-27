@@ -1,18 +1,17 @@
 pub mod binance;
-pub mod ftx;
+
+// pub mod ftx;
 
 use std::{
-    fs::{self, File},
-    io::{copy, Bytes, Read, Write, BufReader, Cursor},
+    fs::File,
+    io::{copy, Write, BufReader, Cursor},
     path::Path,
 };
 
 use csv::{self, StringRecord};
 use flate2::bufread::GzDecoder;
-use reqwest::{Response, Url};
-use tempfile::{tempdir, TempDir};
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
-use tokio::task::spawn_blocking;
 use zip::ZipArchive;
 
 pub async fn log_download_tmp(url: &str, tmp_dir: &Path) -> Result<String, String> {
